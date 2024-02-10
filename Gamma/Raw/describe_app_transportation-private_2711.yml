@@ -1,0 +1,14 @@
+version: "3.1"
+
+
+nlu:
+
+- intent: describe_app_transportation-private
+  examples: |
+    - Uber is a ride-hailing company that offers the Uber mobile app, which you can use to submit a trip request that is automatically sent to an Uber driver near to you, alerting the driver to your location. The accepting Uber driver will then come and pick you up and drive you to your requested destination.
+    - Count on Lyft to take you where you need to go with safety first. We'll match you with a driver, help you find the quickest bus route, or show you the nearest scooter — you'll be on your way in minutes. If it gets you there, it's on the app.
+    - Easily request a ride with the Bolt app. Open the app and set your destination. Request a driver to pick you up. See your driver's location on the real-time map. Enjoy the ride to your destination. Leave a rating and pay.
+    - Transit is your real-time city travel companion. It works in 300+ cities, for buses, trains, Ubers, Lyfts, and everything in between. Get precise real-time predictions for public transit, the smartest & fastest trip plans, and a step-by-step navigator when you're going to unfamiliar destinations (or to wake you up from a mid-trip nap™). Our app gives you all the info you need, in a clear, bold interface so you don't get lost or stuck at the stop.
+    - Log your hike, walk, run or mountain bike ride with our GPS activity tracker with AllTrails. The AllTrails community is a great place to get inspired. View trail maps to find that kid friendly or dog friendly trails that you've been searching for. Take the mountain biking, horseback riding, or backpacking trip you've always wanted to do. Explore national parks or discover new running maps, biking and hiking trails in your area. Download offline maps, get to the trailhead and start your outdoor adventure.
+    - Off-roading fans can now sign in, sign up and check in to legendary off-road trails across the U.S.A. earmarked by Jeep Badge of Honor. Discover specially featured off-road trails and maps. Get trail locations and directions, information, trail highlights and trail difficulty ratings. Earn Trail Points and ranks within the Jeep Badge of Honor community, plus special Hard Badges to put on your Jeep brand vehicle. Upload and share photos from your adventures with other fans in the Jeep Badge of Honor communit
+    - Lime is your ideal carbon-free option for any trip, any time, anywhere. Available in more than 150 cities globally, Lime is a leading provider of electric vehicles, including scooters, bikes and mopeds. Download the app, create an account, accept our User Agreement, acknowledge you've read our Privacy Notice, and add a valid payment method. Find a nearby Lime vehicle on the map vehicle availability depends on your location and supply). Unlock your vehicle by scanning the QR code, entering the plate number, 

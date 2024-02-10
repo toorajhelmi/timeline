@@ -1,0 +1,1 @@
+The app is a 4-in-1 dental care app specially designed for dentists. It is a unique tool that will help you to communicate better with patients and manage your work faster! You can use a treatment visualizer to show them personalized dental animations and let them know about the whole process.

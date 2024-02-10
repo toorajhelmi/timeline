@@ -1,0 +1,9 @@
+version: "3.1"
+
+
+nlu:
+
+- intent: describe_app_book
+  examples: |
+    - Flat-Out Love is a warm and witty novel of family love and dysfunction, deep heartache and raw vulnerability, with a bit of mystery and one whopping, knock-you-to-your-knees romance. This is a true all-ages novel very suitable for older teens, and equally engaging for adults. With over 65,000 e-books sold in just six months, great reviews, and many, many readers returning for a second and third time, this is a story we believe readers would love to see rendered in a beautiful, media-rich app for their iPad,
+    - Mr. potato head stars in his first-ever interactive storybook app. Mr. potato head - School Rush! Tap, swipe, shake, and tilt your way through the action as Mr. potato head comes to life in a cinematic, thrilling tale!

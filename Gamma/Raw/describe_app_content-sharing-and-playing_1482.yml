@@ -1,0 +1,13 @@
+version: "3.1"
+
+
+nlu:
+
+- intent: describe_app_content-sharing-and-playing
+  examples: |
+    - SoundCloud is an open platform for both listeners and creators. Anyone can still listen for free and anyone can still upload tracks, as long as they own all the rights to do so.
+    - The Youtube mobile website and the YouTube mobile app let users watch videos and upload content from their mobile devices. Logging into YouTube on mobile devices continues to give users access to channel subscriptions, friends' activity, and recommendations.
+    - With Vimeo for Android, you can - Watch videos in ad-free HD, stream videos in full 1080p HD, rejoice in Vimeo's always ad-free playback, save videos to watch offline, chromecast videos to bigger screens, easily upload, manage, and share videos, upload videos right from your phone or tablet, easily manage your video settings and profile, share videos privately with people you choose, access your videos and collections from anywhere, maintain total control with our new video action sheet.
+    - The Blogger mobile app allows you to post, edit, save, and view your blog posts. Anyone with Android 5.0 and up can download the app. Important - To post with the Blogger mobile app, you'll need to already have a Google Account and a blog created from a computer.
+    - Blogg gives you the full power of Google's Blogger platform on the go. You can manage your blog from anywhere. Create blog posts including viewing, updating and deleting. Upload pictures and videos. View/Delete/Add Comments. Schedule post publishing. Multiple accounts. Multiple blogs.
+    - Download this Blogger app to start blogging on the go. With this simple Blogger client, you can quickly and easily publish posts to your blog wherever you are. Notice that this client only works with Blogger. The app itself does not host content on servers. It is just a third party client to Blogger.com. Switch blog if you have more than one. Preview or share blogs. View list of your drafted and published posts. Delete unused posts. Publish or revert posts. Compose a post that you can save to draft or immed

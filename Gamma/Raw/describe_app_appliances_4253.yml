@@ -1,0 +1,8 @@
+version: "3.1"
+
+
+nlu:
+
+- intent: describe_app_appliances
+  examples: |
+    - Giving your pets the freedom to come and go as they please is a challenge. You want them to enjoy their freedom, and be safe. But simple flaps and doors notoriously stress cats out, are prone to being broken by dogs, or letting dangerous and unwelcome strangers in. Just like Face ID on your smartphone, Petvation uses machine learning to perform facial recognition and only opens when it sees a familiar face. Petvation intelligently detects visitors, and can identify your cats and dogs, giving you the ability

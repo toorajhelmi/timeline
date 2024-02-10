@@ -1,0 +1,1 @@
+This app gives you a simple and fast method for guest registration, check-in, and management.

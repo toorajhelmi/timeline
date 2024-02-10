@@ -1,0 +1,1 @@
+Dental Manager is the simple and useful dental costs calculator for dental clinics with additional features.

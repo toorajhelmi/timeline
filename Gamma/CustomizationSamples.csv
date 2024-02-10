@@ -1,0 +1,158 @@
+add_action,when the button is tapped go to the home page
+add_action,when the button is clicked navigate to the products page
+add_action,Call get posts api when the button is clicked
+add_action,Call the api when the button is clicked
+add_action,Update the value of the text when the button is clicked
+add_action,I want to navigate to home page when button is clicked
+add_action,I want to add a click action to button
+add_action,Set navigation
+add_action,when the user taps the button a popup should be displayed
+add_action,Navigate to the home screen when user clicks on the button
+add_action,Remove the text when user taps on the button
+add_action,Disable the form when user unchecks 
+add_action,refresh the screen every 5 seconds
+add_action,update the list every 10 minutes
+add_action,ask the user to confirm when the delete button is clicked
+add_component,I need a bidding element on the sell page
+add_component,add a button to the home screen
+add_component,add a button to this page
+add_component,I want a shopping basket on this page
+add_component,add payment feature to the order page
+add_component,add video streaming to contacts
+add_component,add a chat to home screen
+add_component,I need a picture
+add_component,I need a photo
+add_component,I need to show video
+add_component,I need to show images
+add_component,I need to play audio
+add_component,I need to play video
+add_component,I need to upload audio
+add_component,I need to upload image
+add_component,I need to upload video
+add_component,I need a text box
+add_component,I need a text block
+add_component,I need a label
+add_component,I need a range slider
+add_component,I need a rating element
+add_page,add a new page
+add_page,add a new screen
+add_page,I want to design the page from beginning
+add_page,I want to design a page myself
+add_page,Can I design a page from scratch?
+add_page,Can I create a page myself?
+add_page,Let's create an empty page
+add_page,add a blank page
+add_page,add a blank screen
+add_page,add an enrollment page
+add_page,add authentication screen
+add_page,add a home page
+add_page,add a home screen
+add_page,Can I add a page?
+add_page,add a page
+add_icon,I need a copy icon
+add_icon,I need an up arrow icon
+add_icon,I need a left arrow icon
+add_icon,I need a bell icon
+add_icon,I need an alert icon
+add_icon,I need an alert icon
+customize_component,change the button background color
+customize_component,change the button's color to blue
+customize_component,make the text blue
+customize_component,change the color to black
+customize_component,make it brown
+customize_component,change this elements background color to black
+customize_component,change the rating color
+customize_component,Move the button to the left
+customize_component,I like to have a bigger font on label
+customize_component,make the label font bigger
+customize_component,change the button background color to red
+customize_component,change input font
+customize_component,change button's color
+customize_component,change the button color
+customize_theme,I want to customize the theme
+customize_theme,let me change the theme
+customize_theme,I want to specify my own colors
+customize_theme,I like to cuztomize the look and feel
+customize_theme,let's apply a new style
+customize_theme,change the colors
+customize_theme,chane the theme
+customize_theme,change how the app looks
+customize_theme,change fonts and colors
+customize_theme,make the app look friendly
+customize_theme,make the app look formal
+customize_theme,app should be modern looking
+remove_component,remove chat from this screen
+remove_component,remove button
+remove_component,Remove chat from the home screen
+remove_component,Let's remove user authentication from this page
+remove_component,Delete auth element
+remove_component,Remove auth component
+remove_component,I want to disable video upload
+remove_component,We do not need to allow user to upload video
+remove_component,Remove photo uploading capability
+remove_component,I don't want to enable photo upload
+remove_component,We need to remove the payment element
+remove_component,Users don't need to make payment
+remove_component,I don't need a bid component
+remove_component,Remove the bidding function
+remove_component,I'd like to remove the bidding function
+remove_page,Remove this page
+remove_page,Let's get rid of this page
+remove_page,delete a page
+remove_page,remove a page
+remove_page,I want to remove a page
+remove_page,remove this screen
+remove_page,I want to remove the splash screen
+remove_page,I want to remove friends list screen
+remove_page,Let's remove home page.
+remove_page,Delete the home page.
+remove_page,Let's delete the home page
+remove_page,delete screen page
+remove_page,remove home page
+remove_page,Remove chat page
+remove_page,remove screen-1
+authenticate,I do have an account
+authenticate,I am already signed up
+authenticate,I am already registered
+authenticate,I already have an account
+authenticate,sign in
+authenticate,Signin
+authenticate,log in
+authenticate,Register me
+authenticate,Create a new account
+authenticate,Signup
+authenticate,register
+authenticate,sign up
+authenticate,I already have an account
+authenticate,I am already registered
+authenticate,I am already signed up
+common,yes
+common,ok
+common,Okay
+common,Yeah
+common,No
+common,Nope
+common,Sure
+common,of course
+common,yes yes
+common,that sounds good
+common,good afternoon
+common,hey dude
+common,good evening
+common,hi there
+common,bye
+arrange,arrange buttons
+arrange,I want the first group to arrange its content vertically
+arrange,arrange buttons horizontally
+arrange,I want to arrange horizontally
+arrange,I want this container to arrange its children vertically
+arrange,I want this container to arrange its children horizontally
+arrange,Move the button to the top of the text
+arrange,Place the input below the list
+arrange,Put the image next to the description
+arrange,Align top of the elements
+arrange,Align center of element
+arrange,Move the button the the bottom of the page
+arrange,All element should have the same hirght
+arrange,All components must have the same width
+arrange,Move buttons next to each other

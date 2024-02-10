@@ -1,0 +1,1 @@
+Remove photo uploading capability

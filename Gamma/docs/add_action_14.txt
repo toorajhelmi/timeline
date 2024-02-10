@@ -1,0 +1,1 @@
+ask the user to confirm when the delete button is clicked
