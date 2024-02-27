@@ -36,6 +36,8 @@ public class RequirementParser
 
     public async Task Parse()
     {
+        if (!Requirements.Any())
+            return;
         Console.WriteLine("Parsing Requirements ...");
 
         var gptService = new GptService();

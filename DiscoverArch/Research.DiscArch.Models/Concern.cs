@@ -3,7 +3,7 @@
     public class Concern
 	{
 		public List<string> Conditions { get; set; }
-		public List<string> DesiredQualities { get; set; }
+		public Dictionary<string, int> DesiredQualities { get; set; }
         public List<Decision> Decisions { get; set; }
         public double AverageScore => Decisions.Average(d => d.Score);
 

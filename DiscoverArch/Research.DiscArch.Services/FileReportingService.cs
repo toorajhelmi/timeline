@@ -11,6 +11,8 @@
 
             fileName = $"./Reports/{DateTime.Now.ToLongDateString()}-{DateTime.Now.ToLongTimeString()}";
             File.WriteAllText(fileName, "");
+
+            Console.WriteLine($"File Reporing Service Add. Path: {fileName}");
 		}
 
         public void Writeline(string text = "")

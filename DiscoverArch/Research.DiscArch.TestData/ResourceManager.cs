@@ -10,7 +10,9 @@ public enum SystemNames
     Kaggle,
     Contradictory,
     AppFlowy,
-    MLonBL
+    MLonBL,
+    SmallMessagingSystem,
+    OfficerDispatcher
 }
 public class ResourceManager
 {
@@ -23,6 +25,8 @@ public class ResourceManager
             SystemNames.Contradictory => LoadFromTextFile("ContradictoryReqs.txt"),
             SystemNames.AppFlowy => LoadFromTextFile("AppFlowy.txt"),
             SystemNames.MLonBL => LoadFromTextFile("MLonBL.txt"),
+            SystemNames.OfficerDispatcher => LoadFromTextFile("OfficerDispatcher.txt"),
+            SystemNames.SmallMessagingSystem => LoadFromTextFile("SmallMessagingSystem.txt"),
             _ => throw new Exception("System not found"),
         };
     }
