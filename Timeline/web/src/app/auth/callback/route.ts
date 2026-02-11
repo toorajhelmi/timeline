@@ -9,6 +9,18 @@ function requireEnv(name: string): string {
   return v;
 }
 
+function requirePublicSupabaseKey(): string {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
+    (() => {
+      throw new Error(
+        "Missing public Supabase key: set NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY",
+      );
+    })()
+  );
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
 
@@ -21,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   const supabase = createServerClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    requirePublicSupabaseKey(),
     {
       cookies: {
         getAll() {
