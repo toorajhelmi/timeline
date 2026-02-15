@@ -8,7 +8,7 @@ export async function listPublicTimelines(params: { q?: string }) {
   let query = supabase
     .from("timelines")
     .select(
-      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id",
+      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id,theme_primary,theme_secondary,theme_text",
     )
     .eq("visibility", "public")
     .is("canonical_timeline_id", null)
@@ -32,7 +32,7 @@ export async function getTimelineBySlug(slug: string) {
   const { data, error } = await supabase
     .from("timelines")
     .select(
-      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id",
+      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id,theme_primary,theme_secondary,theme_text",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -45,7 +45,7 @@ export async function getTimelineById(id: string) {
   const { data, error } = await supabase
     .from("timelines")
     .select(
-      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id",
+      "id,slug,title,description,tags,visibility,created_by,created_at,updated_at,canonical_timeline_id,theme_primary,theme_secondary,theme_text",
     )
     .eq("id", id)
     .maybeSingle();

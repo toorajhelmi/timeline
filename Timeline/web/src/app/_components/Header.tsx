@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "../../lib/supabase/server";
 import { hasPublicSupabaseEnv } from "../../lib/env";
+import HeaderShellClient from "./HeaderShellClient";
 
 async function signOut() {
   "use server";
@@ -25,61 +26,61 @@ export default async function Header() {
     const supabase = await createSupabaseServerClient();
     const { data } = await supabase.auth.getUser();
     userEmail = data.user?.email ?? null;
-    if (data.user) {
+    const userId = data.user?.id ?? null;
+    if (userId) {
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_admin")
-        .eq("id", data.user.id)
+        .eq("id", userId)
         .maybeSingle();
       isAdmin = Boolean(profile?.is_admin);
     }
   }
 
   return (
-    <header className="border-b border-zinc-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
-      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
+    <HeaderShellClient>
+      <div className="relative mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-4">
         <div className="flex items-center gap-6">
-          <Link className="text-sm font-semibold tracking-tight" href="/">
-            Timeline
+          <Link
+            className="text-sm font-black tracking-[0.18em] text-zinc-50"
+            href="/"
+            aria-label="Rekord home"
+          >
+            re<span className="text-pink-400">K</span>ord
           </Link>
-          <nav className="hidden items-center gap-4 text-sm text-zinc-600 dark:text-zinc-400 sm:flex">
-            <Link className="hover:text-zinc-950 dark:hover:text-white" href="/">
-              Explore
-            </Link>
+          <nav className="hidden items-center gap-4 text-sm text-zinc-300 sm:flex">
             <Link
-              className="hover:text-zinc-950 dark:hover:text-white"
-              href="/new"
+              className="hover:text-white"
+              href={userEmail ? "/new" : `/login?next=${encodeURIComponent("/new")}`}
             >
               New timeline
             </Link>
-            {isAdmin && (
-              <>
-                <Link
-                  className="hover:text-zinc-950 dark:hover:text-white"
-                  href="/admin/timelines"
-                >
-                  Admin
-                </Link>
-              </>
-            )}
+            {isAdmin ? (
+              <Link
+                className="hover:text-white"
+                href="/admin/events"
+              >
+                Admin
+              </Link>
+            ) : null}
           </nav>
         </div>
 
         <div className="flex items-center gap-3 text-sm">
           {userEmail ? (
             <>
-              <span className="hidden max-w-[220px] truncate text-zinc-600 dark:text-zinc-400 sm:inline">
+              <span className="hidden max-w-[220px] truncate text-zinc-300 sm:inline">
                 {userEmail}
               </span>
               <form action={signOut}>
-                <button className="rounded-full border border-zinc-300 px-3 py-1.5 font-medium hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+                <button className="rounded-full border border-zinc-700 px-3 py-1.5 font-medium text-zinc-100 hover:bg-zinc-900">
                   Sign out
                 </button>
               </form>
             </>
           ) : (
             <Link
-              className="rounded-full bg-zinc-900 px-3 py-1.5 font-medium text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="rounded-full bg-white px-3 py-1.5 font-medium text-zinc-900 hover:bg-zinc-200"
               href="/login"
             >
               Sign in
@@ -87,7 +88,7 @@ export default async function Header() {
           )}
         </div>
       </div>
-    </header>
+    </HeaderShellClient>
   );
 }
 

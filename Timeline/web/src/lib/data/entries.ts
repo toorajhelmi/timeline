@@ -1,6 +1,19 @@
 import { createSupabaseServerClient } from "../supabase/server";
 
-import type { Comment, Entry, EntryType, Source } from "../db/types";
+import type { Comment, Entry, EntryMedia, EntryType, Source } from "../db/types";
+
+export async function getFirstEntryTimeStart(timelineId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("entries")
+    .select("time_start")
+    .eq("timeline_id", timelineId)
+    .order("time_start", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.time_start ?? null) as string | null;
+}
 
 export async function listEntries(params: {
   timelineId: string;
@@ -8,6 +21,8 @@ export async function listEntries(params: {
   toIso: string;
   type?: EntryType;
   limit?: number;
+  afterIso?: string;
+  order?: "asc" | "desc";
 }) {
   const supabase = await createSupabaseServerClient();
 
@@ -19,10 +34,14 @@ export async function listEntries(params: {
     .eq("timeline_id", params.timelineId)
     .gte("time_start", params.fromIso)
     .lte("time_start", params.toIso)
-    .order("time_start", { ascending: false })
+    .order("time_start", { ascending: (params.order ?? "desc") === "asc" })
     .limit(params.limit ?? 500);
 
   if (params.type) query = query.eq("type", params.type);
+  if (params.afterIso) {
+    if ((params.order ?? "desc") === "asc") query = query.gt("time_start", params.afterIso);
+    else query = query.lt("time_start", params.afterIso);
+  }
 
   const { data, error } = await query;
   if (error) throw error;
@@ -88,19 +107,63 @@ export async function listSourcesForEntries(entryIds: string[]) {
   if (entryIds.length === 0) return new Map<string, Source[]>();
 
   const supabase = await createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("sources")
-    .select("id,entry_id,url,source_type,added_by,created_at")
-    .in("entry_id", entryIds)
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
+  // IMPORTANT: batching prevents URL/header overflow when entryIds is large.
+  const CHUNK = 100;
+  const all: Source[] = [];
+  for (let i = 0; i < entryIds.length; i += CHUNK) {
+    const chunk = entryIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from("sources")
+      .select("id,entry_id,url,source_type,added_by,created_at")
+      .in("entry_id", chunk)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    all.push(...((data ?? []) as Source[]));
+  }
 
   const map = new Map<string, Source[]>();
-  for (const s of (data ?? []) as Source[]) {
+  for (const s of all) {
     const list = map.get(s.entry_id);
     if (list) list.push(s);
     else map.set(s.entry_id, [s]);
+  }
+  return map;
+}
+
+export async function listMedia(entryId: string) {
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("entry_media")
+    .select("id,entry_id,kind,storage_bucket,storage_path,variant,created_at")
+    .eq("entry_id", entryId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as EntryMedia[];
+}
+
+export async function listMediaForEntries(entryIds: string[]) {
+  if (entryIds.length === 0) return new Map<string, EntryMedia[]>();
+
+  const supabase = await createSupabaseServerClient();
+  // IMPORTANT: batching prevents URL/header overflow when entryIds is large.
+  const CHUNK = 80;
+  const all: EntryMedia[] = [];
+  for (let i = 0; i < entryIds.length; i += CHUNK) {
+    const chunk = entryIds.slice(i, i + CHUNK);
+    const { data, error } = await supabase
+      .from("entry_media")
+      .select("id,entry_id,kind,storage_bucket,storage_path,variant,created_at")
+      .in("entry_id", chunk)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    all.push(...((data ?? []) as EntryMedia[]));
+  }
+
+  const map = new Map<string, EntryMedia[]>();
+  for (const m of all) {
+    const list = map.get(m.entry_id);
+    if (list) list.push(m);
+    else map.set(m.entry_id, [m]);
   }
   return map;
 }

@@ -10,11 +10,18 @@ async function pinEntry(formData: FormData) {
   const slug = String(formData.get("slug") ?? "");
   if (!timelineId || !entryId || !slug) redirect("/admin/timelines");
 
-  const { supabase, user } = await requireAdmin();
+  const { supabase } = await requireAdmin();
+  const { data: timeline, error: tErr } = await supabase
+    .from("timelines")
+    .select("created_by")
+    .eq("id", timelineId)
+    .maybeSingle();
+  if (tErr || !timeline?.created_by) redirect("/admin/timelines?error=timeline_not_found");
+
   await supabase.from("timeline_key_moments").insert({
     timeline_id: timelineId,
     entry_id: entryId,
-    pinned_by: user.id,
+    pinned_by: timeline.created_by,
   });
   redirect(`/admin/timelines/${slug}`);
 }

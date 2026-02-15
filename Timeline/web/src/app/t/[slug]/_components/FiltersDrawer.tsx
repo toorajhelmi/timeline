@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import type { EntryType } from "../../../../lib/db/types";
 import type { Zoom } from "../../../../lib/utils/time";
@@ -25,6 +26,16 @@ export default function FiltersDrawer({
   rangeLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [selectedZoom, setSelectedZoom] = useState<Zoom>(zoom);
+  const [selectedType, setSelectedType] = useState<EntryType | undefined>(entryType);
+
+  // Keep in sync with server-rendered props after navigation.
+  useEffect(() => {
+    setSelectedZoom(zoom);
+    setSelectedType(entryType);
+  }, [zoom, entryType]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -42,6 +53,13 @@ export default function FiltersDrawer({
       return `/t/${slug}?${params.toString()}`;
     };
   }, [slug, zoom]);
+
+  function navigate(next: { z?: Zoom; type?: EntryType }) {
+    const href = hrefFor(next);
+    startTransition(() => {
+      router.push(href);
+    });
+  }
 
   return (
     <>
@@ -113,18 +131,22 @@ export default function FiltersDrawer({
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2 text-sm">
                     {(["year", "month", "week", "day"] as Zoom[]).map((z) => (
-                      <Link
+                      <button
                         key={z}
+                        type="button"
                         className={[
                           "rounded-full border px-3 py-1",
-                          z === zoom
+                          z === selectedZoom
                             ? "border-white/30 bg-white/15 text-white"
                             : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
                         ].join(" ")}
-                        href={hrefFor({ z, type: entryType })}
+                        onClick={() => {
+                          setSelectedZoom(z);
+                          navigate({ z, type: selectedType });
+                        }}
                       >
                         {zoomLabel(z)}
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -134,32 +156,50 @@ export default function FiltersDrawer({
                     Type
                   </div>
                   <div className="mt-2 flex flex-wrap gap-2 text-sm">
-                    <Link
+                    <button
+                      type="button"
                       className={[
                         "rounded-full border px-3 py-1",
-                        !entryType
+                        !selectedType
                           ? "border-white/30 bg-white/15 text-white"
                           : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
                       ].join(" ")}
-                      href={hrefFor({ z: zoom })}
+                      onClick={() => {
+                        setSelectedType(undefined);
+                        navigate({ z: selectedZoom });
+                      }}
                     >
                       All
-                    </Link>
+                    </button>
                     {(
-                      ["update", "evidence", "claim", "context", "correction"] as EntryType[]
+                      [
+                        "evidence",
+                        "claim",
+                        "call_to_action",
+                      ] as EntryType[]
                     ).map((t) => (
-                      <Link
+                      <button
                         key={t}
+                        type="button"
                         className={[
                           "rounded-full border px-3 py-1",
-                          entryType === t
+                          selectedType === t
                             ? "border-white/30 bg-white/15 text-white"
                             : "border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10",
                         ].join(" ")}
-                        href={hrefFor({ z: zoom, type: t })}
+                        onClick={() => {
+                          setSelectedType(t);
+                          navigate({ z: selectedZoom, type: t });
+                        }}
                       >
-                        {t}
-                      </Link>
+                        {t === "call_to_action"
+                          ? "action"
+                          : t === "claim"
+                            ? "opinion"
+                            : t === "evidence"
+                              ? "moment"
+                              : t}
+                      </button>
                     ))}
                   </div>
                 </div>
