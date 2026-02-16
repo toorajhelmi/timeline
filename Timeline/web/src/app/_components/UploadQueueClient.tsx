@@ -11,6 +11,7 @@ import React, {
 } from "react";
 
 import { Upload } from "tus-js-client";
+import fixWebmDuration from "fix-webm-duration";
 
 import { env } from "../../lib/env";
 import { createSupabaseBrowserClient } from "../../lib/supabase/browser";
@@ -49,6 +50,8 @@ type UploadQueueApi = {
   tasks: UploadTask[];
   minimized: boolean;
   setMinimized: (v: boolean) => void;
+  hidden: boolean;
+  setHidden: (v: boolean) => void;
   enqueue: (input: EnqueueInput) => void;
   cancel: (taskId: string) => void;
 };
@@ -97,6 +100,18 @@ function isTransientUploadError(err: any): boolean {
     msg.includes("ECONN") ||
     msg.includes("503") ||
     msg.includes("502")
+  );
+}
+
+function isAbortError(err: any): boolean {
+  const msg = String(err?.message ?? err ?? "").toLowerCase();
+  return (
+    msg === "aborted" ||
+    msg.includes("aborted") ||
+    msg.includes("abort") ||
+    msg.includes("cancel") ||
+    msg.includes("canceled") ||
+    msg.includes("user_canceled")
   );
 }
 
@@ -157,7 +172,11 @@ async function uploadViaTus(params: {
 
     const abort = () => {
       try {
-        upload.abort(true);
+        // Don't "terminate" the upload on Supabase Storage.
+        // Supabase's TUS endpoint can respond 409 to DELETE terminate requests,
+        // which shows up as an uncaught DetailedError in the console.
+        // A plain abort reliably stops the client-side upload without noisy errors.
+        upload.abort(false);
       } catch {
         // ignore
       }
@@ -209,7 +228,19 @@ async function generateVideoPosterWebp(file: File): Promise<File | null> {
     canvas.width = targetW;
     canvas.height = targetH;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
+    if (!ctx) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+      try {
+        video.remove();
+      } catch {
+        // ignore
+      }
+      return null;
+    }
     try {
       ctx.drawImage(video, 0, 0, targetW, targetH);
     } catch {
@@ -233,10 +264,16 @@ async function generateVideoPosterWebp(file: File): Promise<File | null> {
 async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | null> {
   try {
     if (typeof MediaRecorder === "undefined") return null;
+    const canMp4Aac =
+      MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2") ||
+      MediaRecorder.isTypeSupported('video/mp4;codecs="avc1.42E01E,mp4a.40.2"') ||
+      MediaRecorder.isTypeSupported("video/mp4");
     const canVp9 = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus");
     const canVp8 = MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus");
     const canWebm = MediaRecorder.isTypeSupported("video/webm");
-    const mimeType = canVp9
+    const mimeType = canMp4Aac
+      ? "video/mp4;codecs=avc1.42E01E,mp4a.40.2"
+      : canVp9
       ? "video/webm;codecs=vp9,opus"
       : canVp8
         ? "video/webm;codecs=vp8,opus"
@@ -244,13 +281,30 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
           ? "video/webm"
           : "";
     if (!mimeType) return null;
+    const baseMime = mimeType.split(";")[0] ?? "video/webm";
+    const ext = baseMime === "video/mp4" ? ".mp4" : ".webm";
 
     const objectUrl = URL.createObjectURL(file);
     const video = document.createElement("video");
     video.src = objectUrl;
-    video.muted = false;
+    // Ensure playback can start in background without user gesture.
+    // We'll capture audio via WebAudio/captureStream rather than relying on speakers output.
+    video.muted = true;
+    video.volume = 1;
     video.playsInline = true;
-    video.preload = "metadata";
+    video.preload = "auto";
+    try {
+      // Improves reliability of playback/decoding in some browsers.
+      video.style.position = "fixed";
+      video.style.left = "-9999px";
+      video.style.top = "0";
+      video.style.width = "1px";
+      video.style.height = "1px";
+      video.style.opacity = "0";
+      document.body.appendChild(video);
+    } catch {
+      // ignore
+    }
 
     await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve();
@@ -261,6 +315,11 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
     // Only extract a 1-min preview for 3min+ videos (per spec).
     if (!Number.isFinite(duration) || duration < 180) {
       URL.revokeObjectURL(objectUrl);
+      try {
+        video.remove();
+      } catch {
+        // ignore
+      }
       return null;
     }
 
@@ -280,18 +339,71 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
     const canvasStream = canvas.captureStream(fps);
 
     let combined: MediaStream = canvasStream;
+    let ac: AudioContext | null = null;
+    let cleanupAudio: (() => void) | null = null;
     try {
-      const ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+      ac = new (window.AudioContext || (window as any).webkitAudioContext)();
       const src = ac.createMediaElementSource(video);
       const dest = ac.createMediaStreamDestination();
+
+      // Route element audio into a capturable MediaStreamDestination.
       src.connect(dest);
-      src.connect(ac.destination);
-      combined = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+
+      // Keep strong refs until the end, then close.
+      cleanupAudio = () => {
+        try {
+          src.disconnect();
+        } catch {
+          // ignore
+        }
+        try {
+          dest.disconnect();
+        } catch {
+          // ignore
+        }
+        try {
+          void ac?.close();
+        } catch {
+          // ignore
+        }
+      };
+
+      // Some browsers start AudioContext suspended; best-effort resume.
+      try {
+        await ac.resume();
+      } catch {
+        // ignore
+      }
+
+      const audioTracks = dest.stream.getAudioTracks();
+      // Prefer audio from the element playback stream if available (more reliable across codecs),
+      // otherwise fall back to the WebAudio destination track.
+      let elAudio: MediaStreamTrack | null = null;
+      try {
+        const cap =
+          (video as any).captureStream ??
+          (video as any).mozCaptureStream ??
+          null;
+        const s: MediaStream | null = typeof cap === "function" ? (cap.call(video) as MediaStream) : null;
+        elAudio = s?.getAudioTracks?.()[0] ?? null;
+      } catch {
+        elAudio = null;
+      }
+
+      const aTrack = elAudio ?? audioTracks[0] ?? null;
+      combined = aTrack
+        ? new MediaStream([...canvasStream.getVideoTracks(), aTrack])
+        : canvasStream;
     } catch {
       combined = canvasStream;
     }
 
-    const rec = new MediaRecorder(combined, { mimeType });
+    if (combined.getVideoTracks().length === 0) return null;
+    const rec = new MediaRecorder(combined, {
+      mimeType,
+      videoBitsPerSecond: 1_100_000,
+      audioBitsPerSecond: 96_000,
+    } as any);
     const chunks: BlobPart[] = [];
     rec.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) chunks.push(e.data);
@@ -306,8 +418,41 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
       if (!video.paused && !video.ended) requestAnimationFrame(draw);
     };
 
+    // Start playback muted (autoplay-safe), then unmute so audio actually flows into the
+    // MediaElementSource → MediaStreamDestination graph (we are NOT connected to speakers).
+    try {
+      await video.play();
+    } catch {
+      // If playback can't start, preview generation can't proceed.
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch {
+        // ignore
+      }
+      try {
+        cleanupAudio?.();
+      } catch {
+        // ignore
+      }
+      try {
+        video.remove();
+      } catch {
+        // ignore
+      }
+      return null;
+    }
+
+    // Once playback has started, unmute so audio frames are produced.
+    // (Because we don't connect to `ac.destination`, nothing plays out loud.)
+    try {
+      video.muted = false;
+    } catch {
+      // ignore
+    }
+    await sleepMs(60);
+
+    const startedAt = performance.now();
     rec.start(500);
-    await video.play();
     requestAnimationFrame(draw);
 
     await sleepMs(targetSeconds * 1000);
@@ -315,15 +460,32 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
     rec.stop();
     video.pause();
     URL.revokeObjectURL(objectUrl);
+    try {
+      cleanupAudio?.();
+    } catch {
+      // ignore
+    }
+    try {
+      video.remove();
+    } catch {
+      // ignore
+    }
 
     await new Promise<void>((resolve) => {
       rec.onstop = () => resolve();
     });
 
-    const blob = new Blob(chunks, { type: "video/webm" });
+    const rawBlob = new Blob(chunks, { type: baseMime });
+    const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+    const blob =
+      baseMime === "video/webm"
+        ? // Fix MediaRecorder WebM duration metadata. Without this, the native video progress
+          // bar can “race”, slow down, and even jump backwards as the browser refines duration.
+          await fixWebmDuration(rawBlob, durationMs)
+        : rawBlob;
     if (blob.size < 1024 * 16) return null;
-    return new File([blob], `__rekord_1min__${file.name}.webm`, {
-      type: "video/webm",
+    return new File([blob], `__rekord_1min__${file.name}${ext}`, {
+      type: baseMime,
       lastModified: Date.now(),
     });
   } catch {
@@ -331,9 +493,13 @@ async function generateVideoPreviewWebmWithAudio(file: File): Promise<File | nul
   }
 }
 
-function mediaSignal(entryId: string) {
+function mediaSignal(entryId: string, info?: { kind?: string; variant?: string }) {
   try {
-    window.dispatchEvent(new CustomEvent("rekord:media", { detail: { entryId } }));
+    window.dispatchEvent(
+      new CustomEvent("rekord:media", {
+        detail: { entryId, kind: info?.kind ?? null, variant: info?.variant ?? null },
+      }),
+    );
   } catch {
     // ignore
   }
@@ -342,6 +508,7 @@ function mediaSignal(entryId: string) {
 export function UploadQueueProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const [minimized, setMinimized] = useState(true);
+  const [hidden, setHidden] = useState(false);
 
   const aborters = useRef<Map<string, AbortController>>(new Map());
   const fileMap = useRef<Map<string, File>>(new Map());
@@ -352,7 +519,11 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
     fileMap.current.delete(taskId);
     aborters.current.delete(taskId);
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: "cancelled" } : t)),
+      prev.map((t) =>
+        t.id === taskId
+          ? { ...t, status: "cancelled", note: "Cancelled", error: null }
+          : t,
+      ),
     );
   }, []);
 
@@ -434,7 +605,13 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
           continue;
         }
 
-        setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, status: "uploading" } : t)));
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === next.id && t.status !== "cancelled"
+              ? { ...t, status: "uploading" }
+              : t,
+          ),
+        );
 
         const aborter = new AbortController();
         aborters.current.set(next.id, aborter);
@@ -474,12 +651,13 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                 bytes: poster.size,
                 uploaded_by: userId,
               } as any);
-              mediaSignal(next.entryId);
+              mediaSignal(next.entryId, { kind: "image", variant: "poster" });
             }
 
             if (preview) {
               setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, note: "Uploading 1-min preview…" } : t)));
-              const previewPath = `${next.timelineSlug}/${next.entryId}/${uuid()}.webm`;
+              const isMp4 = preview.type === "video/mp4" || preview.name.toLowerCase().endsWith(".mp4");
+              const previewPath = `${next.timelineSlug}/${next.entryId}/${uuid()}${isMp4 ? ".mp4" : ".webm"}`;
               await withTransientRetries(() =>
                 uploadViaTus({
                   supabaseUrl: env.supabaseUrl,
@@ -504,10 +682,14 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                 bytes: preview.size,
                 uploaded_by: userId,
               } as any);
-              mediaSignal(next.entryId);
+              mediaSignal(next.entryId, { kind: "video", variant: "preview" });
 
               // Once the 1-min preview is ready, auto-hide the widget (upload continues).
               window.setTimeout(() => setMinimized(true), 4000);
+            } else {
+              // If preview generation fails (codec/MediaRecorder limitations), don't leave the
+              // publishing overlay waiting forever. The UI can fall back to waiting for full upload.
+              mediaSignal(next.entryId, { kind: "video", variant: "preview_skipped" });
             }
 
             setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, note: "Starting full upload…" } : t)));
@@ -526,7 +708,9 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                 setTasks((prev) =>
                   prev.map((t) =>
                     t.id === next.id
-                      ? {
+                      ? t.status !== "uploading"
+                        ? t
+                        : {
                           ...t,
                           bytesUploaded,
                           bytesTotal,
@@ -554,18 +738,21 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
             bytes: next.bytesTotal,
             uploaded_by: userId,
           } as any);
-          mediaSignal(next.entryId);
+          mediaSignal(next.entryId, { kind: next.kind, variant: next.variant });
 
           setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, status: "done", note: "Upload complete" } : t)));
           fileMap.current.delete(next.id);
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "error");
+          const aborted = aborter.signal.aborted || isAbortError(e);
           setTasks((prev) =>
-            prev.map((t) =>
-              t.id === next.id
-                ? { ...t, status: msg === "aborted" ? "cancelled" : "error", error: msg, note: null }
-                : t,
-            ),
+            prev.map((t) => {
+              if (t.id !== next.id) return t;
+              // If user already cancelled, don't overwrite.
+              if (t.status === "cancelled") return t;
+              if (aborted) return { ...t, status: "cancelled", note: "Cancelled", error: null };
+              return { ...t, status: "error", error: msg, note: null };
+            }),
           );
         } finally {
           aborters.current.delete(next.id);
@@ -580,7 +767,10 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
     void pump();
   }, [pump]);
 
-  const api = useMemo<UploadQueueApi>(() => ({ tasks, minimized, setMinimized, enqueue, cancel }), [tasks, minimized, enqueue, cancel]);
+  const api = useMemo<UploadQueueApi>(
+    () => ({ tasks, minimized, setMinimized, hidden, setHidden, enqueue, cancel }),
+    [tasks, minimized, hidden, enqueue, cancel],
+  );
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
@@ -604,18 +794,20 @@ function PinkK({ text }: { text: string }) {
 }
 
 export function UploadQueueWidget() {
-  const { tasks, minimized, setMinimized, cancel } = useUploadQueue();
+  const { tasks, minimized, setMinimized, hidden, cancel } = useUploadQueue();
   const active = tasks.filter((t) => isActive(t.status));
   const last = active[0] ?? tasks[tasks.length - 1] ?? null;
 
-  if (!last) return null;
+  if (hidden || !last) return null;
+  // If user cancelled and nothing else is active, hide immediately.
+  if (active.length === 0 && last.status === "cancelled") return null;
 
   const pct = last.status === "uploading" ? pctFor(last) : null;
   const indeterminate = last.status === "uploading" && (pct === null || pct === 0) && !!last.note;
 
   if (minimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-[120]">
+      <div className="fixed bottom-4 right-4 z-[120] flex items-end gap-2">
         <button
           type="button"
           className="rounded-2xl border border-white/10 bg-zinc-950/80 px-4 py-3 text-left text-xs text-zinc-100 shadow-2xl backdrop-blur hover:bg-zinc-950/90"
@@ -628,6 +820,16 @@ export function UploadQueueWidget() {
             {last.status === "done" ? "Upload complete" : last.note ?? "Uploading…"}
           </div>
         </button>
+        {last.status === "uploading" ? (
+          <button
+            type="button"
+            className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-200 shadow-2xl backdrop-blur hover:bg-zinc-950/90"
+            onClick={() => cancel(last.id)}
+            title="Stop this upload"
+          >
+            Cancel
+          </button>
+        ) : null}
       </div>
     );
   }

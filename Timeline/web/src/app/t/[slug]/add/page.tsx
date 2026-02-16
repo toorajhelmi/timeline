@@ -29,10 +29,12 @@ export default async function AddEntryPage({
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
+  // Run auth + timeline lookup in parallel to reduce navigation latency.
+  const [{ data: userData }, timeline] = await Promise.all([
+    supabase.auth.getUser(),
+    getTimelineBySlug(slug),
+  ]);
   if (!userData.user) redirect(`/login?next=${encodeURIComponent(`/t/${slug}/add`)}`);
-
-  const timeline = await getTimelineBySlug(slug);
   if (!timeline) notFound();
 
   const sp = (await searchParams) ?? {};

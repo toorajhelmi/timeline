@@ -49,7 +49,9 @@ function resolveTimelineMediaUrls(
   const videos = items.filter((m) => m.kind === "video");
 
   const pickVideo =
-    videos.find((v) => (v.variant ?? "original") === "preview") ?? videos[0] ?? null;
+    videos.find((v) => (v.variant ?? "original") === "optimized") ??
+    videos.find((v) => (v.variant ?? "original") === "preview") ??
+    null;
 
   const resolved: Array<{ kind: "image" | "video" | "audio"; url: string }> = [];
   const firstImage = images[0] ?? null;
@@ -295,7 +297,7 @@ function FiltersPanel({
   );
 }
 
-export default async function TimelineCompareView({
+export default async function TimelineView({
   slug,
   variant,
   searchParams,
@@ -487,6 +489,7 @@ export default async function TimelineCompareView({
               <Link
                 className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
                 href={`/t/${timeline.slug}/add`}
+                prefetch
               >
                 Add entry
               </Link>
@@ -590,6 +593,7 @@ export default async function TimelineCompareView({
             <Link
               className="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-200"
               href={`/t/${timeline.slug}/add`}
+              prefetch
             >
               Add entry
             </Link>

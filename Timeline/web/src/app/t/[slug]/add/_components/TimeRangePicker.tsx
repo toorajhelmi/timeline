@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function localToUtcIso(local: string): string {
   const s = String(local ?? "").trim();
@@ -17,17 +17,44 @@ function nowLocalInputValue(): string {
   return local.slice(0, 16);
 }
 
-export default function TimeRangePicker() {
-  const [startLocal, setStartLocal] = useState<string>("");
-  const [endLocal, setEndLocal] = useState<string>("");
+export default function TimeRangePicker({
+  initialStartLocal,
+  initialEndLocal,
+  onChange,
+}: {
+  initialStartLocal?: string;
+  initialEndLocal?: string;
+  onChange?: (v: {
+    startLocal: string;
+    endLocal: string;
+    startUtc: string;
+    endUtc: string;
+  }) => void;
+}) {
+  // Initialize immediately so HTML5 validation doesn't block submit before effects run.
+  const [startLocal, setStartLocal] = useState<string>(() => initialStartLocal ?? nowLocalInputValue());
+  const [endLocal, setEndLocal] = useState<string>(() => initialEndLocal ?? "");
+  const didApplyInitial = useRef(false);
 
-  // Set default on the client to avoid server timezone influencing the default value.
+  // If the parent restores a draft after mount, apply it once.
   useEffect(() => {
-    setStartLocal(nowLocalInputValue());
-  }, []);
+    if (didApplyInitial.current) return;
+    if (typeof initialStartLocal === "string" && initialStartLocal) setStartLocal(initialStartLocal);
+    if (typeof initialEndLocal === "string") setEndLocal(initialEndLocal);
+    didApplyInitial.current = true;
+  }, [initialStartLocal, initialEndLocal]);
+
+  // Keep a safety net for cases where hydration briefly clears value.
+  useEffect(() => {
+    if (!startLocal) setStartLocal(nowLocalInputValue());
+  }, [startLocal]);
 
   const startUtc = useMemo(() => localToUtcIso(startLocal), [startLocal]);
   const endUtc = useMemo(() => localToUtcIso(endLocal), [endLocal]);
+
+  useEffect(() => {
+    onChange?.({ startLocal, endLocal, startUtc, endUtc });
+  }, [startLocal, endLocal, startUtc, endUtc, onChange]);
 
   return (
     <div className="mt-5 grid gap-4 sm:grid-cols-2">

@@ -1,4 +1,4 @@
-import TimelineCompareView from "./_components/TimelineCompareView";
+import TimelineView from "./_components/TimelineView";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,6 @@ export default async function TimelinePage({
   searchParams?: Promise<{ z?: string; from?: string; to?: string; type?: string }>;
 }) {
   const { slug } = await params;
-  return <TimelineCompareView slug={slug} variant="A" searchParams={searchParams} />;
+  return <TimelineView slug={slug} variant="A" searchParams={searchParams} />;
 }
 

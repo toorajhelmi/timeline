@@ -112,3 +112,13 @@ textarea {
   filter: invert(1) brightness(1.2) contrast(1.05);
   opacity: 0.92;
 }
+
+/* Indeterminate progress bar sweep (reliable across browsers). */
+@keyframes rekord-progress-sweep {
+  0% {
+    background-position: 200% 0%;
+  }
+  100% {
+    background-position: -200% 0%;
+  }
+}

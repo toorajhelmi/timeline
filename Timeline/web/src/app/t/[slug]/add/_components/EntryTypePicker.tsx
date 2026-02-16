@@ -14,16 +14,21 @@ const OPTIONS: Opt[] = [
 
 export default function EntryTypePicker({
   name,
+  value: valueProp,
+  onChange,
   defaultValue = "claim",
 }: {
   name: string;
+  value?: EntryTypeValue;
+  onChange?: (value: EntryTypeValue) => void;
   defaultValue?: EntryTypeValue;
 }) {
   const [open, setOpen] = useState(false);
-  const [value, setValue] = useState<EntryTypeValue>(defaultValue);
+  const [uncontrolledValue, setUncontrolledValue] = useState<EntryTypeValue>(defaultValue);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
+  const value = (valueProp ?? uncontrolledValue) as EntryTypeValue;
   const selected = useMemo(
     () => OPTIONS.find((o) => o.value === value) ?? OPTIONS[1]!,
     [value],
@@ -55,7 +60,7 @@ export default function EntryTypePicker({
       <button
         ref={buttonRef}
         type="button"
-        className="mt-2 flex w-full items-center justify-between rounded-xl border border-zinc-300 bg-transparent px-3 py-2 text-sm text-zinc-900 outline-none focus:ring-2 focus:ring-zinc-400 dark:border-zinc-700 dark:text-zinc-100 dark:focus:ring-zinc-600"
+        className="mt-2 flex w-full items-center justify-between rounded-xl border border-zinc-700 bg-transparent px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-zinc-600"
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -64,7 +69,7 @@ export default function EntryTypePicker({
           {/* Only show the main label (no hint) in the closed state */}
           <span className="font-medium">{selected.label}</span>
         </span>
-        <span className="text-zinc-500 dark:text-zinc-400" aria-hidden>
+        <span className="text-zinc-400" aria-hidden>
           ▾
         </span>
       </button>
@@ -87,7 +92,8 @@ export default function EntryTypePicker({
                 role="option"
                 aria-selected={active}
                 onClick={() => {
-                  setValue(o.value);
+                  if (valueProp === undefined) setUncontrolledValue(o.value);
+                  onChange?.(o.value);
                   setOpen(false);
                   buttonRef.current?.focus();
                 }}

@@ -67,6 +67,12 @@ export default function TimelineEntryMedia({
 
   if (media.kind === "video") {
     const targetId = `video-preview-${entryId}`;
+    const u = (media.url || "").toLowerCase();
+    const sourceType = u.endsWith(".mp4")
+      ? "video/mp4"
+      : u.endsWith(".webm")
+        ? "video/webm"
+        : undefined;
     return (
       <div
         className={`mt-3 overflow-hidden ${isPreview ? "border border-zinc-200 dark:border-zinc-800" : ""} ${radius}`}
@@ -85,7 +91,6 @@ export default function TimelineEntryMedia({
 
           <video
             className="absolute inset-0 h-full w-full object-cover"
-            src={media.url}
             poster={media.posterUrl}
             autoPlay={isPreview}
             muted={isPreview}
@@ -94,7 +99,9 @@ export default function TimelineEntryMedia({
             preload="metadata"
             controls={!isPreview}
             disablePictureInPicture
-          />
+          >
+            <source src={media.url} {...(sourceType ? { type: sourceType } : {})} />
+          </video>
 
           {isPreview ? (
             <>

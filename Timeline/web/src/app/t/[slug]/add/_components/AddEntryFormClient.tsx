@@ -1,16 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import type { EntryType } from "../../../../../lib/db/types";
 import { createSupabaseBrowserClient } from "../../../../../lib/supabase/browser";
-import { useUploadQueue } from "../../../../_components/UploadQueueClient";
+import { useUploadQueue } from "@/app/_components/UploadQueueClient";
 import EntryTypePicker from "./EntryTypePicker";
 import MediaPicker, { type PickedFile } from "./MediaPicker";
 import TimeRangePicker from "./TimeRangePicker";
 
 type Phase = "idle" | "creating" | "queued" | "error";
+type WaitWant = "preview" | "original_video" | "any" | null;
+
+type Draft = {
+  type: "evidence" | "claim" | "call_to_action";
+  title: string;
+  body: string;
+  sourceUrl: string;
+  timeStartLocal: string;
+  timeEndLocal: string;
+};
+
+function draftKey(timelineSlug: string) {
+  return `rekord:add-draft:${timelineSlug}`;
+}
 
 function PinkK({ text }: { text: string }) {
   const idx = text.indexOf("K");
@@ -37,12 +51,125 @@ function extFromName(name: string): string {
   return /^[\.\w-]+$/.test(e) ? e : "";
 }
 
+function uuid(): string {
+  try {
+    const c: any = (globalThis as any).crypto;
+    if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  } catch {
+    // ignore
+  }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
+}
+
 function kindFromMime(mime: string) {
   const m = String(mime ?? "");
   if (m.startsWith("image/")) return "image";
   if (m.startsWith("video/")) return "video";
   if (m.startsWith("audio/")) return "audio";
   return "file";
+}
+
+function nowLocalInputValue(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
+  return local.slice(0, 16);
+}
+
+async function getVideoDurationSeconds(file: File): Promise<number | null> {
+  try {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.src = url;
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("video_metadata_error"));
+    });
+    const d = Number(video.duration || 0);
+    URL.revokeObjectURL(url);
+    if (!Number.isFinite(d) || d <= 0) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForEntryMedia(params: {
+  supabase: ReturnType<typeof createSupabaseBrowserClient>;
+  entryId: string;
+  want: "preview" | "original_video" | "any";
+  timeoutMs: number;
+}): Promise<void> {
+  const started = Date.now();
+  while (Date.now() - started < params.timeoutMs) {
+    const q = params.supabase
+      .from("entry_media")
+      .select("id,kind,variant,created_at")
+      .eq("entry_id", params.entryId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const { data, error } = await q;
+    if (error) {
+      // transient read errors happen during auth/session transitions; keep trying briefly
+      await new Promise((r) => setTimeout(r, 600));
+      continue;
+    }
+
+    const rows = (data ?? []) as Array<{ kind: string; variant?: string | null }>;
+    if (params.want === "any") {
+      if (rows.length > 0) return;
+    } else if (params.want === "preview") {
+      if (rows.some((r) => r.kind === "video" && (r.variant ?? "original") === "preview")) return;
+    } else {
+      if (rows.some((r) => r.kind === "video" && (r.variant ?? "original") === "original")) return;
+    }
+
+    await new Promise((r) => setTimeout(r, 600));
+  }
+  throw new Error(params.want === "preview" ? "preview_timeout" : "media_timeout");
+}
+
+async function waitForMediaSignal(params: {
+  entryId: string;
+  want: "preview" | "original_video" | "any";
+  timeoutMs: number;
+}): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    let done = false;
+    let tid: number | undefined;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      if (tid) window.clearTimeout(tid);
+      window.removeEventListener("rekord:media", onAny as any);
+      resolve(ok);
+    };
+
+    const onAny = (ev: Event) => {
+      try {
+        const e = ev as CustomEvent<any>;
+        const d = e.detail ?? {};
+        if (d.entryId !== params.entryId) return;
+        const kind = String(d.kind ?? "");
+        const variant = String(d.variant ?? "");
+        if (params.want === "any") return finish(true);
+        if (params.want === "preview") {
+          if (kind === "video" && variant === "preview_skipped") return finish(false);
+          if (kind === "video" && variant === "preview") return finish(true);
+        } else {
+          if (kind === "video" && variant === "original") return finish(true);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener("rekord:media", onAny as any);
+    tid = window.setTimeout(() => finish(false), params.timeoutMs);
+  });
 }
 
 export default function AddEntryFormClient({
@@ -53,15 +180,58 @@ export default function AddEntryFormClient({
   timelineSlug: string;
 }) {
   const router = useRouter();
-  const { enqueue, setMinimized } = useUploadQueue();
+  const { enqueue, setMinimized, setHidden, tasks, cancel } = useUploadQueue();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedFile[]>([]);
+  const [createdEntryId, setCreatedEntryId] = useState<string | null>(null);
+  const [waitWant, setWaitWant] = useState<WaitWant>(null);
+  const [typeValue, setTypeValue] = useState<Draft["type"]>("evidence");
+  const [titleValue, setTitleValue] = useState("");
+  const [bodyValue, setBodyValue] = useState("");
+  const [sourceUrlValue, setSourceUrlValue] = useState("");
+  const [timeStartLocal, setTimeStartLocal] = useState<string>(() => nowLocalInputValue());
+  const [timeEndLocal, setTimeEndLocal] = useState<string>("");
 
   const originalsCount = useMemo(
     () => picked.filter((p) => p.role === "original").length,
     [picked],
   );
+
+  // Restore draft from localStorage.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(draftKey(timelineSlug));
+      if (!raw) return;
+      const d = JSON.parse(raw) as Partial<Draft>;
+      if (d.type) setTypeValue(d.type);
+      if (typeof d.title === "string") setTitleValue(d.title);
+      if (typeof d.body === "string") setBodyValue(d.body);
+      if (typeof d.sourceUrl === "string") setSourceUrlValue(d.sourceUrl);
+      if (typeof d.timeStartLocal === "string" && d.timeStartLocal) setTimeStartLocal(d.timeStartLocal);
+      if (typeof d.timeEndLocal === "string") setTimeEndLocal(d.timeEndLocal);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timelineSlug]);
+
+  // Persist draft while editing (files cannot be persisted).
+  useEffect(() => {
+    try {
+      const d: Draft = {
+        type: typeValue,
+        title: titleValue,
+        body: bodyValue,
+        sourceUrl: sourceUrlValue,
+        timeStartLocal,
+        timeEndLocal,
+      };
+      localStorage.setItem(draftKey(timelineSlug), JSON.stringify(d));
+    } catch {
+      // ignore
+    }
+  }, [timelineSlug, typeValue, titleValue, bodyValue, sourceUrlValue, timeStartLocal, timeEndLocal]);
 
   return (
     <div className="relative">
@@ -72,17 +242,58 @@ export default function AddEntryFormClient({
               <PinkK text="reKord" />
             </div>
             <div className="mt-3 text-sm text-zinc-200">
-              {phase === "creating" ? "Publishing…" : "Uploading media…"}
+              {phase === "creating"
+                ? "Publishing…"
+                : waitWant === "preview"
+                  ? "Preparing 1-min preview…"
+                  : "Uploading media…"}
             </div>
             <div className="mt-2 text-xs text-zinc-400">
               {originalsCount ? `${originalsCount} file${originalsCount === 1 ? "" : "s"} queued` : ""}
             </div>
-            <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-1/2 animate-pulse rounded-full bg-white/25" />
-            </div>
+            {phase === "queued" && waitWant === "preview" ? (
+              <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-white/20">
+                <div className="h-full w-full bg-[linear-gradient(90deg,transparent,rgba(236,72,153,.95),transparent)] bg-[length:200%_100%] animate-[rekord-progress-sweep_1.6s_ease-in-out_infinite]" />
+              </div>
+            ) : (
+              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-full w-1/2 animate-pulse rounded-full bg-white/25" />
+              </div>
+            )}
             <div className="mt-4 text-[11px] text-zinc-400">
-              You can keep using the app while uploads continue.
+              {phase === "queued" && waitWant === "preview"
+                ? "Hang tight — we’re uploading a 1‑minute preview so your post can appear right away. You can cancel if you change your mind."
+                : phase === "queued"
+                  ? "This stays here until the upload is ready. You can cancel to abort posting."
+                  : ""}
             </div>
+            {phase === "queued" && createdEntryId ? (
+              <div className="mt-4 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-100 hover:bg-white/10"
+                  onClick={() => {
+                    // Abort any queued/running uploads for this entry.
+                    try {
+                      for (const t of tasks) {
+                        if (t.entryId === createdEntryId && (t.status === "queued" || t.status === "uploading")) {
+                          cancel(t.id);
+                        }
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    setMinimized(true);
+                    setHidden(false);
+                    setPhase("idle");
+                    setWaitWant(null);
+                    // Keep draft fields intact so the user can adjust and try again.
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
@@ -95,6 +306,7 @@ export default function AddEntryFormClient({
 
       <form
         className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-6"
+        noValidate
         onSubmit={async (e) => {
           e.preventDefault();
           setError(null);
@@ -102,10 +314,10 @@ export default function AddEntryFormClient({
           const form = e.currentTarget;
           const fd = new FormData(form);
 
-          const type = clampEntryType(String(fd.get("type") ?? ""));
-          const title = String(fd.get("title") ?? "").trim();
-          const body = String(fd.get("body") ?? "").trim();
-          const sourceUrl = String(fd.get("source_url") ?? "").trim();
+          const type = clampEntryType(String(fd.get("type") ?? typeValue));
+          const title = String(fd.get("title") ?? titleValue).trim();
+          const body = String(fd.get("body") ?? bodyValue).trim();
+          const sourceUrl = String(fd.get("source_url") ?? sourceUrlValue).trim();
           const timeStartUtc = String(fd.get("time_start_utc") ?? "").trim();
           const timeEndUtc = String(fd.get("time_end_utc") ?? "").trim();
 
@@ -132,6 +344,8 @@ export default function AddEntryFormClient({
           }
 
           setPhase("creating");
+          setCreatedEntryId(null);
+          setWaitWant(null);
 
           try {
             const supabase = createSupabaseBrowserClient();
@@ -156,6 +370,7 @@ export default function AddEntryFormClient({
             if (eErr) throw eErr;
 
             const entryId = entry.id as string;
+            setCreatedEntryId(entryId);
 
             if (sourceUrl) {
               const { error: sErr } = await supabase.from("sources").insert({
@@ -169,6 +384,11 @@ export default function AddEntryFormClient({
 
             if (picked.length === 0) {
               setPhase("idle");
+              try {
+                localStorage.removeItem(draftKey(timelineSlug));
+              } catch {
+                // ignore
+              }
               router.replace(`/t/${timelineSlug}/e/${entryId}`);
               router.refresh();
               return;
@@ -178,6 +398,36 @@ export default function AddEntryFormClient({
             setPhase("queued");
             setMinimized(false);
 
+            const pickedVideos = picked.filter((p) => p.file.type.startsWith("video/"));
+            let shouldWaitForPreview = false;
+            if (pickedVideos.length) {
+              const durations = await Promise.all(pickedVideos.map((p) => getVideoDurationSeconds(p.file)));
+              shouldWaitForPreview = durations.some((d) => (d ?? 0) >= 180);
+            }
+
+            const want: "preview" | "original_video" | "any" = shouldWaitForPreview
+              ? "preview"
+              : pickedVideos.length
+                ? "original_video"
+                : "any";
+            setWaitWant(want);
+            // While the publish overlay is up (esp. waiting for preview), keep the queue widget hidden.
+            if (want === "preview") setHidden(true);
+
+            // Start listening BEFORE enqueue to avoid missing fast signals.
+            const signalPromise = waitForMediaSignal({
+              entryId,
+              want,
+              timeoutMs: want === "preview" ? 15 * 60 * 1000 : 60 * 60 * 1000,
+            });
+            const originalSignalPromise = shouldWaitForPreview
+              ? waitForMediaSignal({
+                  entryId,
+                  want: "original_video",
+                  timeoutMs: 60 * 60 * 1000,
+                })
+              : Promise.resolve(false);
+
             const bucket = "timeline-media";
             for (const pf of picked) {
               const f = pf.file;
@@ -186,7 +436,7 @@ export default function AddEntryFormClient({
               const kind = kindFromMime(mime);
               const variant = kind === "video" ? "original" : "original";
               const ext = extFromName(f.name);
-              const objectPath = `${timelineSlug}/${entryId}/${crypto.randomUUID()}${ext}`;
+              const objectPath = `${timelineSlug}/${entryId}/${uuid()}${ext}`;
 
               enqueue({
                 timelineSlug,
@@ -199,21 +449,82 @@ export default function AddEntryFormClient({
               });
             }
 
+            // Keep the full-screen progress visible until we have the right media attached.
+            if (want === "preview") {
+              // Prefer preview (so the user sees the post quickly), but if preview is skipped/fails,
+              // fall back to waiting for the original upload to complete.
+              let got = false;
+              try {
+                const first = await Promise.any([
+                  signalPromise.then((ok) => {
+                    if (!ok) throw new Error("no_preview_signal");
+                    return "preview";
+                  }),
+                  originalSignalPromise.then((ok) => {
+                    if (!ok) throw new Error("no_original_signal");
+                    return "original";
+                  }),
+                ]);
+                got = Boolean(first);
+              } catch {
+                got = false;
+              }
+
+              if (!got) {
+                // DB fallback: try preview briefly, then allow original.
+                try {
+                  await waitForEntryMedia({
+                    supabase,
+                    entryId,
+                    want: "preview",
+                    timeoutMs: 2 * 60 * 1000,
+                  });
+                } catch {
+                  await waitForEntryMedia({
+                    supabase,
+                    entryId,
+                    want: "original_video",
+                    timeoutMs: 60 * 60 * 1000,
+                  });
+                }
+              }
+            } else {
+              const gotSignal = await signalPromise;
+              if (!gotSignal) {
+                await waitForEntryMedia({
+                  supabase,
+                  entryId,
+                  want,
+                  timeoutMs: 5 * 60 * 1000,
+                });
+              }
+            }
+
             // Replace history entry so Back goes to timeline, not /add.
+            try {
+              localStorage.removeItem(draftKey(timelineSlug));
+            } catch {
+              // ignore
+            }
+            setHidden(false);
             router.replace(`/t/${timelineSlug}/e/${entryId}`);
             router.refresh();
-
-            // Let the overlay breathe very briefly, then release.
-            window.setTimeout(() => setPhase("idle"), 900);
+            setPhase("idle");
           } catch (err: any) {
             setError(String(err?.message ?? err ?? "unknown_error"));
+            setHidden(false);
             setPhase("idle");
           }
         }}
       >
         <label className="text-sm font-medium">Type</label>
         <div id="type">
-          <EntryTypePicker name="type" defaultValue="claim" />
+          <EntryTypePicker
+            name="type"
+            value={typeValue}
+            onChange={(v) => setTypeValue(v)}
+            defaultValue="evidence"
+          />
         </div>
 
         <label className="mt-5 block text-sm font-medium" htmlFor="title">
@@ -225,6 +536,8 @@ export default function AddEntryFormClient({
           name="title"
           placeholder="Short headline"
           dir="auto"
+          value={titleValue}
+          onChange={(e) => setTitleValue(e.target.value)}
         />
 
         <label className="mt-5 block text-sm font-medium" htmlFor="body">
@@ -238,9 +551,18 @@ export default function AddEntryFormClient({
           rows={6}
           required
           dir="auto"
+          value={bodyValue}
+          onChange={(e) => setBodyValue(e.target.value)}
         />
 
-        <TimeRangePicker />
+        <TimeRangePicker
+          initialStartLocal={timeStartLocal}
+          initialEndLocal={timeEndLocal}
+          onChange={(v) => {
+            setTimeStartLocal(v.startLocal);
+            setTimeEndLocal(v.endLocal);
+          }}
+        />
 
         <label className="mt-5 block text-sm font-medium" htmlFor="source_url">
           Source URL (optional · Moment needs source OR media)
@@ -251,6 +573,8 @@ export default function AddEntryFormClient({
           name="source_url"
           placeholder="https://…"
           type="url"
+          value={sourceUrlValue}
+          onChange={(e) => setSourceUrlValue(e.target.value)}
         />
 
         <div className="mt-5">
@@ -266,7 +590,7 @@ export default function AddEntryFormClient({
           disabled={phase !== "idle"}
           type="submit"
         >
-          {phase === "idle" ? "Publish entry" : "Publishing…"}
+          {phase === "idle" ? "Publish" : "Publishing…"}
         </button>
       </form>
     </div>

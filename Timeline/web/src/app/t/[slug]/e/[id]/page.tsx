@@ -20,6 +20,7 @@ import { createSupabaseServiceClient } from "../../../../../lib/supabase/service
 import SharePanel from "./_components/SharePanel";
 import ShareMenu from "../../../../_components/ShareMenu";
 import { getSiteUrl } from "../../../../../lib/site";
+import EntryMediaLiveRefreshClient from "./_components/EntryMediaLiveRefreshClient";
 
 function truncate(s: string, n: number): string {
   const t = String(s ?? "").replace(/\s+/g, " ").trim();
@@ -245,11 +246,26 @@ export default async function EntryDetailPage({
     listMedia(entry.id),
   ]);
 
-  const mediaItems = mediaRows
-    .filter((m) => m.kind === "image" || m.kind === "video" || m.kind === "audio")
+  // Prefer full/original media when available on the detail page.
+  // (Timeline view may prefer previews for performance, but the entry page should upgrade
+  // from the 1‑min preview to the full video as soon as it's uploaded.)
+  const images = (mediaRows ?? []).filter((m) => m.kind === "image");
+  const videos = (mediaRows ?? []).filter((m) => m.kind === "video");
+  const audios = (mediaRows ?? []).filter((m) => m.kind === "audio");
+
+  const chosenImage = images.find((m) => m.variant === "poster") ?? images[0] ?? null;
+  const chosenVideo =
+    videos.find((m) => m.variant === "optimized") ??
+    videos.find((m) => m.variant === "preview") ??
+    videos[0] ??
+    null;
+  const chosenAudio = audios[0] ?? null;
+
+  const mediaItems = ([chosenImage, chosenVideo, chosenAudio] as const)
+    .filter(Boolean)
     .map((m) => ({
-      kind: m.kind as "image" | "video" | "audio",
-      url: `${env.supabaseUrl}/storage/v1/object/public/${m.storage_bucket}/${m.storage_path}`,
+      kind: m!.kind as "image" | "video" | "audio",
+      url: `${env.supabaseUrl}/storage/v1/object/public/${m!.storage_bucket}/${m!.storage_path}`,
     }));
 
   const media =
@@ -284,6 +300,7 @@ export default async function EntryDetailPage({
   return (
     <div className="dark min-h-screen bg-zinc-950 px-6 py-14 text-zinc-50">
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6">
+        <EntryMediaLiveRefreshClient entryId={entry.id} />
         <header className="flex flex-col gap-2">
           <Link
             className="text-sm font-medium text-zinc-300 hover:underline"
