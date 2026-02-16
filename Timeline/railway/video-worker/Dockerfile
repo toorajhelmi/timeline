@@ -7,7 +7,9 @@ WORKDIR /app/web
 
 # Install deps for the web workspace (includes @supabase/supabase-js).
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --omit=dev
+# Railway builds occasionally report lockfile sync issues even when local `npm ci` succeeds.
+# For this worker we only need production deps, so prefer a non-strict install.
+RUN npm install --omit=dev --no-audit --no-fund
 
 # Copy only what we need to run the worker.
 COPY web/scripts ./scripts
