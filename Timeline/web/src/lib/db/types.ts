@@ -11,9 +11,18 @@ export type Timeline = {
   created_at: string;
   updated_at: string;
   canonical_timeline_id: string | null;
+  theme_primary: string;
+  theme_secondary: string;
+  theme_text: string;
 };
 
-export type EntryType = "update" | "evidence" | "claim" | "context" | "correction";
+export type EntryType =
+  | "update"
+  | "evidence"
+  | "claim"
+  | "context"
+  | "correction"
+  | "call_to_action";
 export type ContentStatus = "active" | "hidden" | "removed" | "disputed";
 
 export type Zoom = "year" | "month" | "week" | "day";
@@ -40,6 +49,26 @@ export type Source = {
   url: string;
   source_type: string;
   added_by: string;
+  created_at: string;
+};
+
+export type MediaKind = "image" | "video" | "audio" | "file";
+
+export type EntryMedia = {
+  id: string;
+  entry_id: string;
+  kind: MediaKind;
+  storage_bucket: string;
+  storage_path: string;
+  variant: string;
+  original_url: string | null;
+  mime_type: string | null;
+  bytes: number | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  sha256: string | null;
+  uploaded_by: string;
   created_at: string;
 };
 

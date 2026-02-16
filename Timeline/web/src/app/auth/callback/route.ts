@@ -25,11 +25,14 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
 
   const code = url.searchParams.get("code");
+  const nextRaw = url.searchParams.get("next");
+  const next =
+    nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//") ? nextRaw : "/";
   if (!code) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL(next, request.url));
   }
 
-  let response = NextResponse.redirect(new URL("/", request.url));
+  let response = NextResponse.redirect(new URL(next, request.url));
 
   const supabase = createServerClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
@@ -51,7 +54,10 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     response = NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(error.message)}`, request.url),
+      new URL(
+        `/login?error=${encodeURIComponent(error.message)}&next=${encodeURIComponent(next)}`,
+        request.url,
+      ),
     );
   }
 

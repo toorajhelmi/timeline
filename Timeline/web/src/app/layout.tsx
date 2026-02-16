@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Header from "./_components/Header";
+import { UploadQueueProvider, UploadQueueWidget } from "./_components/UploadQueueClient";
+import { getSiteUrl } from "../lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +16,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Timeline",
+  metadataBase: new URL(getSiteUrl()),
+  title: "Rekord",
   description: "Shared timelines of real-world events over time.",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: ["/favicon.svg"],
+  },
 };
 
 export default function RootLayout({
@@ -28,8 +35,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Header />
-        {children}
+        <UploadQueueProvider>
+          <Header />
+          {children}
+          <UploadQueueWidget />
+        </UploadQueueProvider>
       </body>
     </html>
   );

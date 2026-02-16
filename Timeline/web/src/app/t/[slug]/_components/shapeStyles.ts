@@ -7,6 +7,7 @@ export function shapeForEntryType(type: EntryType): ShapeVariant {
   if (type === "evidence") return "octagon";
   if (type === "claim") return "diamond";
   if (type === "context") return "oval";
+  if (type === "call_to_action") return "rounded";
   return "heart";
 }
 
@@ -26,6 +27,7 @@ export function gradientForEntryType(type: EntryType): string {
   if (type === "evidence") return "from-fuchsia-500/25 via-rose-500/10 to-transparent";
   if (type === "claim") return "from-amber-500/25 via-orange-500/10 to-transparent";
   if (type === "context") return "from-emerald-500/25 via-teal-500/10 to-transparent";
+  if (type === "call_to_action") return "from-lime-500/25 via-cyan-500/10 to-transparent";
   return "from-violet-500/25 via-pink-500/10 to-transparent";
 }
 

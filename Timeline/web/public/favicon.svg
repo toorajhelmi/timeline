@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rekord">
+  <rect x="32" y="32" width="448" height="448" rx="116" fill="#0a0a0a"/>
+  <path
+    d="M200 124V388M200 256L344 124M200 256L344 388"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="82"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+</svg>
+

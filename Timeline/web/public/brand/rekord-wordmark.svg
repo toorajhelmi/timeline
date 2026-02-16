@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 220" role="img" aria-label="reKord">
+  <title>reKord</title>
+  <g fill="currentColor">
+    <text
+      x="20"
+      y="150"
+      font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+      font-size="140"
+      letter-spacing="-2"
+    >
+      <tspan font-weight="500">re</tspan><tspan font-weight="900">K</tspan><tspan font-weight="500">ord</tspan>
+    </text>
+  </g>
+</svg>
+

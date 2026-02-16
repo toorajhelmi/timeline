@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Default to dark to avoid white "flashes" during scroll/overscroll. */
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -12,15 +14,111 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Native selects: keep dark dropdown menus consistent */
+.dark select,
+select {
+  color-scheme: dark;
+}
+
+.dark select {
+  background-color: rgb(9 9 11); /* zinc-950 */
+  color: rgb(244 244 245); /* zinc-100 */
+  border-color: rgb(39 39 42); /* zinc-800 */
+}
+
+/* Many browsers honor option styling; Safari may partially ignore it. */
+.dark select option {
+  background-color: rgb(9 9 11);
+  color: rgb(244 244 245);
+}
+
+/* Textareas: no resize handle; scroll instead */
+textarea {
+  resize: none;
+  overflow: auto;
+}
+
+/* Timeline horizontal scrollers: themed scrollbar */
+[data-timeline-scroll] {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(24, 24, 27, 0.35) transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-timeline-scroll] {
+    scrollbar-color: rgba(244, 244, 245, 0.22) transparent;
+  }
+}
+
+/* WebKit (Chrome/Safari/Edge) */
+[data-timeline-scroll]::-webkit-scrollbar {
+  height: 10px;
+}
+
+[data-timeline-scroll]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-timeline-scroll]::-webkit-scrollbar-thumb {
+  background: rgba(24, 24, 27, 0.28);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 9999px;
+}
+
+[data-timeline-scroll]::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 24, 27, 0.42);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-timeline-scroll]::-webkit-scrollbar-thumb {
+    background: rgba(244, 244, 245, 0.18);
+  }
+  [data-timeline-scroll]::-webkit-scrollbar-thumb:hover {
+    background: rgba(244, 244, 245, 0.28);
+  }
+}
+
+/* Make datetime-local picker icon visible in dark mode (WebKit) */
+@media (prefers-color-scheme: dark) {
+  input.datetime-input::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.2);
+    opacity: 0.9;
+  }
+}
+
+/* Also support class-based dark mode (we force `.dark` on some pages). */
+.dark input.datetime-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2);
+  opacity: 0.9;
+}
+
+/* Ensure datetime-local controls render dark UI (Safari/Chrome). */
+.dark input[type="datetime-local"],
+.dark input.datetime-input {
+  color-scheme: dark;
+}
+
+/* Some WebKit builds ignore the class selector above; target type selector too. */
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.2) contrast(1.05);
+  opacity: 0.92;
+}
+
+/* Indeterminate progress bar sweep (reliable across browsers). */
+@keyframes rekord-progress-sweep {
+  0% {
+    background-position: 200% 0%;
+  }
+  100% {
+    background-position: -200% 0%;
+  }
 }
