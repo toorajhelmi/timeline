@@ -1,1 +1,0 @@
-organizers can define online or in-person events, sell tickets. Participants can search for events and purchase the ticket if they find a desireable one.

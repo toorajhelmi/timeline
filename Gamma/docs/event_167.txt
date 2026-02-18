@@ -1,1 +1,0 @@
-This is a guest list management application designed to create simple online event invitations, plus an efficient and seamless check-in process.

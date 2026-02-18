@@ -1,1 +1,0 @@
-when the button is clicked navigate to the products page
