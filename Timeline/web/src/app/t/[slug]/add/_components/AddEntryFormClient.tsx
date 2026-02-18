@@ -186,6 +186,7 @@ export default function AddEntryFormClient({
   const [picked, setPicked] = useState<PickedFile[]>([]);
   const [createdEntryId, setCreatedEntryId] = useState<string | null>(null);
   const [waitWant, setWaitWant] = useState<WaitWant>(null);
+  const [queuedTick, setQueuedTick] = useState(0);
   const [typeValue, setTypeValue] = useState<Draft["type"]>("evidence");
   const [titleValue, setTitleValue] = useState("");
   const [bodyValue, setBodyValue] = useState("");
@@ -197,6 +198,28 @@ export default function AddEntryFormClient({
     () => picked.filter((p) => p.role === "original").length,
     [picked],
   );
+
+  const previewCountdownDisplay = useMemo(() => {
+    if (phase !== "queued" || waitWant !== "preview" || !createdEntryId) return "";
+    const t = tasks.find((x) => x.entryId === createdEntryId && x.kind === "video") ?? null;
+    if (!t) return "";
+
+    // What we want here is the "1-min pipeline" indicator:
+    // 0→50% recording, 50→100% uploading (poster+preview). Must never go backwards.
+    const p01 = (t as any).previewProgress01;
+    if (typeof p01 === "number" && Number.isFinite(p01)) {
+      const pct = Math.max(0, Math.min(100, Math.floor(p01 * 100)));
+      return `${pct}%`;
+    }
+
+    return "";
+  }, [phase, waitWant, createdEntryId, tasks, queuedTick]);
+
+  useEffect(() => {
+    if (phase !== "queued" || waitWant !== "preview") return;
+    const id = window.setInterval(() => setQueuedTick((x) => x + 1), 500);
+    return () => window.clearInterval(id);
+  }, [phase, waitWant]);
 
   // Restore draft from localStorage.
   useEffect(() => {
@@ -248,18 +271,12 @@ export default function AddEntryFormClient({
                   ? "Preparing 1-min preview…"
                   : "Uploading media…"}
             </div>
-            <div className="mt-2 text-xs text-zinc-400">
-              {originalsCount ? `${originalsCount} file${originalsCount === 1 ? "" : "s"} queued` : ""}
-            </div>
+            {/* removed queued file count */}
             {phase === "queued" && waitWant === "preview" ? (
-              <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-white/20">
-                <div className="h-full w-full bg-[linear-gradient(90deg,transparent,rgba(236,72,153,.95),transparent)] bg-[length:200%_100%] animate-[rekord-progress-sweep_1.6s_ease-in-out_infinite]" />
+              <div className="mt-4 text-6xl font-black tabular-nums text-pink-400">
+                {previewCountdownDisplay}
               </div>
-            ) : (
-              <div className="mt-4 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                <div className="h-full w-1/2 animate-pulse rounded-full bg-white/25" />
-              </div>
-            )}
+            ) : null}
             <div className="mt-4 text-[11px] text-zinc-400">
               {phase === "queued" && waitWant === "preview"
                 ? "Hang tight — we’re uploading a 1‑minute preview so your post can appear right away. You can cancel if you change your mind."

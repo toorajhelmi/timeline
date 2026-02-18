@@ -432,9 +432,9 @@ export default async function TimelineView({
   const themeColors = themeColorsFromTimeline(timeline);
   const themeVars = cssVarsForTimelineThemeColors(themeColors);
   const supabase = await createSupabaseServerClient();
-  const { data: userData } = await supabase.auth.getUser();
-  const canEdit = Boolean(userData.user?.id && userData.user.id === timeline.created_by);
-  const userId = userData.user?.id ?? null;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const userId = sessionData.session?.user?.id ?? null;
+  const canEdit = Boolean(userId && userId === timeline.created_by);
 
   // Layout A: compact sticky header + in-timeline highlights, filters via details.
   if (variant === "A") {
