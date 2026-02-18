@@ -18,6 +18,8 @@ import { createSupabaseBrowserClient } from "../../lib/supabase/browser";
 
 type UploadStatus = "queued" | "uploading" | "done" | "error" | "cancelled";
 
+type UploadStage = "preview_record" | "poster_upload" | "preview_upload" | "full_upload";
+
 export type UploadTask = {
   id: string;
   createdAt: number;
@@ -33,6 +35,15 @@ export type UploadTask = {
   kind: "image" | "video" | "audio" | "file";
   status: UploadStatus;
   note?: string | null;
+  stage?: UploadStage | null;
+  stageStartedAt?: number | null;
+  stageTotalMs?: number | null;
+  stageBytesUploaded?: number | null;
+  stageBytesTotal?: number | null;
+  // Preview-pipeline progress (0→1) for the 1-min “record + upload preview” UX.
+  previewProgress01?: number | null;
+  // Optional override for showing a stage-based progress bar (e.g. 50% recording, 50% uploading).
+  progress01?: number | null;
   error?: string | null;
 };
 
@@ -79,11 +90,31 @@ function isActive(status: UploadStatus) {
 }
 
 function pctFor(t: UploadTask): number | null {
+  if (typeof t.progress01 === "number" && Number.isFinite(t.progress01)) {
+    const raw = t.progress01 * 100;
+    if (raw > 0 && raw < 1) return 1;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
   if (!t.bytesTotal) return null;
   const raw = (t.bytesUploaded / t.bytesTotal) * 100;
   if (!Number.isFinite(raw)) return null;
   if (t.bytesUploaded > 0 && raw < 1) return 1;
   return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function pctForBytesOnly(t: UploadTask): number | null {
+  if (!t.bytesTotal) return null;
+  const raw = (t.bytesUploaded / t.bytesTotal) * 100;
+  if (!Number.isFinite(raw)) return null;
+  if (t.bytesUploaded > 0 && raw < 1) return 1;
+  return Math.max(0, Math.min(100, Math.round(raw)));
+}
+
+function formatEtaHHMM(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
 async function sleepMs(ms: number) {
@@ -548,6 +579,13 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
         variant: input.variant,
         status: "queued",
         note: null,
+        stage: null,
+        stageStartedAt: null,
+        stageTotalMs: null,
+        stageBytesUploaded: null,
+        stageBytesTotal: null,
+        previewProgress01: null,
+        progress01: null,
         error: null,
       },
     ]);
@@ -616,16 +654,139 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
         const aborter = new AbortController();
         aborters.current.set(next.id, aborter);
 
+        let updateUploadStageProgress: (() => void) | null = null;
+        let fullUploadedBytes = 0;
+
         try {
           // For original videos, generate poster + 1-min preview first (if applicable).
           if (next.kind === "video" && next.variant === "original") {
-            setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, note: "Preparing preview…" } : t)));
+            setTasks((prev) =>
+              prev.map((t) =>
+                t.id === next.id
+                  ? {
+                      ...t,
+                      note: "Preparing preview…",
+                      previewProgress01: Math.max(0.01, t.previewProgress01 ?? 0),
+                      progress01: Math.max(0.01, t.progress01 ?? 0),
+                    }
+                  : t,
+              ),
+            );
 
             const poster = await generateVideoPosterWebp(file);
-            const preview = await generateVideoPreviewWebmWithAudio(file);
+            if (poster) {
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id
+                    ? { ...t, previewProgress01: Math.max(0.05, t.previewProgress01 ?? 0), progress01: Math.max(0.05, t.progress01 ?? 0) }
+                    : t,
+                ),
+              );
+            }
+
+            // 0→50%: deterministic 1-minute preview recording (time-based).
+            setTasks((prev) =>
+              prev.map((t) =>
+                t.id === next.id
+                  ? {
+                      ...t,
+                      note: "Recording 1-min preview…",
+                      stage: "preview_record",
+                      stageStartedAt: Date.now(),
+                      stageTotalMs: 60_000,
+                      stageBytesUploaded: null,
+                      stageBytesTotal: null,
+                      previewProgress01: Math.max(0, t.previewProgress01 ?? 0),
+                      progress01: Math.max(0.05, t.progress01 ?? 0),
+                    }
+                  : t,
+              ),
+            );
+            const recordStartedAt = Date.now();
+            const expectedRecordMs = 60_000;
+            const recTimer = window.setInterval(() => {
+              const elapsed = Date.now() - recordStartedAt;
+              const frac = Math.max(0, Math.min(1, elapsed / expectedRecordMs));
+              const p = 0.5 * frac; // 0% → 50%
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id && t.status === "uploading"
+                    ? { ...t, previewProgress01: Math.max(p, t.previewProgress01 ?? 0) }
+                    : t,
+                ),
+              );
+            }, 500);
+
+            let preview: File | null = null;
+            try {
+              preview = await generateVideoPreviewWebmWithAudio(file);
+            } finally {
+              window.clearInterval(recTimer);
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id
+                    ? {
+                        ...t,
+                        note: "Preparing uploads…",
+                        previewProgress01: Math.max(0.5, t.previewProgress01 ?? 0),
+                        progress01: Math.max(0.5, t.progress01 ?? 0),
+                      }
+                    : t,
+                ),
+              );
+            }
+
+            // 50→100%: uploading stage (poster + preview + full upload).
+            const previewStageTotal = (poster?.size ?? 0) + (preview?.size ?? 0);
+            let posterUploadedBytes = 0;
+            let previewUploadedBytes = 0;
+            updateUploadStageProgress = () => {
+              // Overall upload progress (includes full upload).
+              const uploadStageTotal = (poster?.size ?? 0) + (preview?.size ?? 0) + (file.size ?? 0);
+              if (uploadStageTotal) {
+                const stageUploadedBytes = posterUploadedBytes + previewUploadedBytes + fullUploadedBytes;
+                const frac = Math.max(0, Math.min(1, stageUploadedBytes / uploadStageTotal));
+                const p = 0.5 + 0.5 * frac;
+                setTasks((prev) =>
+                  prev.map((t) =>
+                    t.id === next.id && t.status === "uploading"
+                      ? { ...t, progress01: Math.max(p, t.progress01 ?? 0) }
+                      : t,
+                  ),
+                );
+              }
+
+              // 1-min preview pipeline progress: 50→100% based only on poster+preview uploads.
+              if (previewStageTotal) {
+                const stageUploadedBytes = posterUploadedBytes + previewUploadedBytes;
+                const frac = Math.max(0, Math.min(1, stageUploadedBytes / previewStageTotal));
+                const p = 0.5 + 0.5 * frac;
+                setTasks((prev) =>
+                  prev.map((t) =>
+                    t.id === next.id && t.status === "uploading"
+                      ? { ...t, previewProgress01: Math.max(p, t.previewProgress01 ?? 0) }
+                      : t,
+                  ),
+                );
+              }
+            };
 
             if (poster) {
-              setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, note: "Uploading poster…" } : t)));
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id
+                    ? {
+                        ...t,
+                        note: "Uploading poster…",
+                        stage: "poster_upload",
+                        stageStartedAt: Date.now(),
+                        stageTotalMs: null,
+                        stageBytesUploaded: 0,
+                        stageBytesTotal: poster.size ?? null,
+                      }
+                    : t,
+                ),
+              );
               const posterPath = `${next.timelineSlug}/${next.entryId}/${uuid()}.webp`;
               await withTransientRetries(() =>
                 uploadViaTus({
@@ -636,7 +797,22 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                   objectName: posterPath,
                   file: poster,
                   cacheControlSeconds: 31536000,
-                  onProgress: () => {},
+                  onProgress: (bytesUploaded, bytesTotal) => {
+                    posterUploadedBytes = bytesUploaded;
+                    setTasks((prev) =>
+                      prev.map((t) =>
+                        t.id === next.id && t.status === "uploading"
+                          ? {
+                              ...t,
+                              stage: "poster_upload",
+                              stageBytesUploaded: bytesUploaded,
+                              stageBytesTotal: bytesTotal,
+                            }
+                          : t,
+                      ),
+                    );
+                    updateUploadStageProgress?.();
+                  },
                   signal: aborter.signal,
                 }),
               );
@@ -655,7 +831,21 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
             }
 
             if (preview) {
-              setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, note: "Uploading 1-min preview…" } : t)));
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id
+                    ? {
+                        ...t,
+                        note: "Uploading 1-min preview…",
+                        stage: "preview_upload",
+                        stageStartedAt: Date.now(),
+                        stageTotalMs: null,
+                        stageBytesUploaded: 0,
+                        stageBytesTotal: preview.size ?? null,
+                      }
+                    : t,
+                ),
+              );
               const isMp4 = preview.type === "video/mp4" || preview.name.toLowerCase().endsWith(".mp4");
               const previewPath = `${next.timelineSlug}/${next.entryId}/${uuid()}${isMp4 ? ".mp4" : ".webm"}`;
               await withTransientRetries(() =>
@@ -667,7 +857,22 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                   objectName: previewPath,
                   file: preview,
                   cacheControlSeconds: 31536000,
-                  onProgress: () => {},
+                  onProgress: (bytesUploaded, bytesTotal) => {
+                    previewUploadedBytes = bytesUploaded;
+                    setTasks((prev) =>
+                      prev.map((t) =>
+                        t.id === next.id && t.status === "uploading"
+                          ? {
+                              ...t,
+                              stage: "preview_upload",
+                              stageBytesUploaded: bytesUploaded,
+                              stageBytesTotal: bytesTotal,
+                            }
+                          : t,
+                      ),
+                    );
+                    updateUploadStageProgress?.();
+                  },
                   signal: aborter.signal,
                 }),
               );
@@ -683,6 +888,14 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
                 uploaded_by: userId,
               } as any);
               mediaSignal(next.entryId, { kind: "video", variant: "preview" });
+              // For the 1-min pipeline indicator, we're done once preview uploads.
+              setTasks((prev) =>
+                prev.map((t) =>
+                  t.id === next.id && t.status === "uploading"
+                    ? { ...t, previewProgress01: Math.max(1, t.previewProgress01 ?? 0) }
+                    : t,
+                ),
+              );
 
               // Once the 1-min preview is ready, auto-hide the widget (upload continues).
               window.setTimeout(() => setMinimized(true), 4000);
@@ -705,6 +918,22 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
               file,
               cacheControlSeconds: 31536000,
               onProgress: (bytesUploaded, bytesTotal) => {
+                if (next.kind === "video" && next.variant === "original") {
+                  fullUploadedBytes = bytesUploaded;
+                  updateUploadStageProgress?.();
+                  setTasks((prev) =>
+                    prev.map((t) =>
+                      t.id === next.id && t.status === "uploading"
+                        ? {
+                            ...t,
+                            stage: "full_upload",
+                            stageBytesUploaded: bytesUploaded,
+                            stageBytesTotal: bytesTotal,
+                          }
+                        : t,
+                    ),
+                  );
+                }
                 setTasks((prev) =>
                   prev.map((t) =>
                     t.id === next.id
@@ -802,8 +1031,61 @@ export function UploadQueueWidget() {
   // If user cancelled and nothing else is active, hide immediately.
   if (active.length === 0 && last.status === "cancelled") return null;
 
-  const pct = last.status === "uploading" ? pctFor(last) : null;
+  // Prefer real byte progress (matches the displayed "X / Y MB") over any stage-based progress.
+  const pct =
+    last.status === "uploading" ? (pctForBytesOnly(last) ?? pctFor(last)) : null;
   const indeterminate = last.status === "uploading" && (pct === null || pct === 0) && !!last.note;
+
+  const speedRef = useRef<{
+    taskId: string | null;
+    lastBytes: number;
+    lastTs: number;
+    bps: number | null;
+  }>({ taskId: null, lastBytes: 0, lastTs: 0, bps: null });
+
+  useEffect(() => {
+    if (last.status !== "uploading") return;
+    if (!last.bytesTotal) return;
+
+    const now = Date.now();
+    const cur = speedRef.current;
+
+    if (cur.taskId !== last.id) {
+      speedRef.current = {
+        taskId: last.id,
+        lastBytes: last.bytesUploaded ?? 0,
+        lastTs: now,
+        bps: null,
+      };
+      return;
+    }
+
+    const dtMs = now - cur.lastTs;
+    const db = (last.bytesUploaded ?? 0) - cur.lastBytes;
+    if (dtMs < 300 || db <= 0) return;
+
+    const instBps = db / (dtMs / 1000);
+    const prev = cur.bps;
+    const nextBps = prev && Number.isFinite(prev) ? prev * 0.85 + instBps * 0.15 : instBps;
+    speedRef.current = {
+      taskId: last.id,
+      lastBytes: last.bytesUploaded ?? 0,
+      lastTs: now,
+      bps: nextBps,
+    };
+  }, [last.id, last.status, last.bytesUploaded, last.bytesTotal]);
+
+  const etaText = useMemo(() => {
+    if (last.status !== "uploading") return null;
+    if (!last.bytesTotal) return null;
+    const remainingBytes = Math.max(0, (last.bytesTotal ?? 0) - (last.bytesUploaded ?? 0));
+    if (remainingBytes <= 0) return "00:00";
+    const bps = speedRef.current.bps;
+    if (!bps || !Number.isFinite(bps) || bps <= 0) return null;
+    const seconds = remainingBytes / bps;
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    return formatEtaHHMM(seconds);
+  }, [last.status, last.bytesUploaded, last.bytesTotal]);
 
   if (minimized) {
     return (
@@ -819,17 +1101,10 @@ export function UploadQueueWidget() {
           <div className="mt-1 text-[11px] text-zinc-300">
             {last.status === "done" ? "Upload complete" : last.note ?? "Uploading…"}
           </div>
+          {last.status === "uploading" && typeof pct === "number" ? (
+            <div className="mt-2 text-sm font-black tabular-nums text-pink-400">{pct}%</div>
+          ) : null}
         </button>
-        {last.status === "uploading" ? (
-          <button
-            type="button"
-            className="rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-[11px] text-zinc-200 shadow-2xl backdrop-blur hover:bg-zinc-950/90"
-            onClick={() => cancel(last.id)}
-            title="Stop this upload"
-          >
-            Cancel
-          </button>
-        ) : null}
       </div>
     );
   }
@@ -857,20 +1132,28 @@ export function UploadQueueWidget() {
         </div>
       </div>
 
-      <div className="mt-3">
-        <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-          {indeterminate ? (
-            <div className="h-full w-1/2 animate-pulse rounded-full bg-white/25" />
-          ) : (
-            <div className="h-full rounded-full bg-white/70 transition-[width]" style={{ width: `${pct ?? 0}%` }} />
-          )}
-        </div>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-zinc-400">
-          <span>
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+          <div>
             {last.bytesTotal
               ? `${Math.round(last.bytesUploaded / (1024 * 1024))} / ${Math.round(last.bytesTotal / (1024 * 1024))} MB`
               : ""}
-          </span>
+          </div>
+          {last.status === "uploading" && typeof pct === "number" ? (
+            <div className="tabular-nums">{pct}%</div>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          {indeterminate ? (
+            <div className="text-[11px] font-medium text-zinc-400">Working…</div>
+          ) : last.status === "uploading" && etaText ? (
+            <div
+              className="text-lg font-black tabular-nums text-pink-400"
+              title="Estimated time remaining (HH:MM)"
+            >
+              {etaText}
+            </div>
+          ) : null}
           {last.status === "uploading" ? (
             <button
               type="button"

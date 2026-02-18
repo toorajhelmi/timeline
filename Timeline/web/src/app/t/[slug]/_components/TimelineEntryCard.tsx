@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import type { Entry, EntryType, Source, Zoom } from "../../../../lib/db/types";
 import { formatUtcTime } from "../../../../lib/utils/time";
@@ -97,12 +99,17 @@ export default function TimelineEntryCard({
   compact?: boolean;
   showType?: boolean;
 }) {
+  const router = useRouter();
   const shape = shapeForEntryType(entry.type);
   const density = compact ? compactDensity() : densityFromZoom(zoom);
   const media =
     mediaItems.length > 0
       ? detectMediaFromResolvedMedia(mediaItems)
       : detectMediaFromSources(sources);
+
+  const [localPinned, setLocalPinned] = useState<boolean>(pinned);
+  const [pinBusy, setPinBusy] = useState(false);
+  useEffect(() => setLocalPinned(pinned), [pinned]);
 
   const disputed = entry.status === "disputed";
   // Don't fall back to the original body if stripping removes everything;
@@ -176,16 +183,41 @@ export default function TimelineEntryCard({
               <button
                 type="button"
                 className={`inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs font-semibold transition ${
-                  pinned
+                  localPinned
                     ? "border-amber-300/40 bg-amber-400/15 text-amber-200 hover:bg-amber-400/20"
                     : "border-zinc-400/30 bg-zinc-950/20 text-zinc-200 hover:bg-zinc-950/30"
                 }`}
-                title={pinned ? "Unpin from highlights" : "Pin to highlights"}
-                onClick={(e) => {
-                  onTogglePin?.(!pinned);
+                title={localPinned ? "Unpin from highlights" : "Pin to highlights"}
+                disabled={pinBusy}
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const nextPinned = !localPinned;
+                  if (onTogglePin) {
+                    onTogglePin(nextPinned);
+                    return;
+                  }
+                  setPinBusy(true);
+                  setLocalPinned(nextPinned);
+                  try {
+                    const res = await fetch(`/api/t/${encodeURIComponent(timelineSlug)}/key-moments`, {
+                      method: nextPinned ? "POST" : "DELETE",
+                      headers: { "content-type": "application/json" },
+                      body: JSON.stringify({ entryId: entry.id }),
+                    });
+                    const j = (await res.json().catch(() => null)) as
+                      | { ok?: boolean; error?: string }
+                      | null;
+                    if (!res.ok || !j?.ok) throw new Error(j?.error || `HTTP ${res.status}`);
+                  } catch {
+                    setLocalPinned(!nextPinned);
+                  } finally {
+                    setPinBusy(false);
+                    router.refresh();
+                  }
                 }}
               >
-                {pinned ? "★" : "☆"}
+                {localPinned ? "★" : "☆"}
               </button>
             ) : null}
             {entry.is_locked && (
