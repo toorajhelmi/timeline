@@ -541,28 +541,39 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
   const [minimized, setMinimized] = useState(true);
   const [hidden, setHidden] = useState(false);
 
+  const tasksRef = useRef<UploadTask[]>([]);
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
   const aborters = useRef<Map<string, AbortController>>(new Map());
   const fileMap = useRef<Map<string, File>>(new Map());
   const running = useRef(false);
+
+  const setTasksSync = useCallback((fn: (prev: UploadTask[]) => UploadTask[]) => {
+    setTasks((prev) => {
+      const next = fn(prev);
+      tasksRef.current = next;
+      return next;
+    });
+  }, []);
 
   const cancel = useCallback((taskId: string) => {
     aborters.current.get(taskId)?.abort();
     fileMap.current.delete(taskId);
     aborters.current.delete(taskId);
-    setTasks((prev) =>
+    setTasksSync((prev) =>
       prev.map((t) =>
-        t.id === taskId
-          ? { ...t, status: "cancelled", note: "Cancelled", error: null }
-          : t,
+        t.id === taskId ? { ...t, status: "cancelled", note: "Cancelled", error: null } : t,
       ),
     );
-  }, []);
+  }, [setTasksSync]);
 
   const enqueue = useCallback((input: EnqueueInput) => {
     const id = uuid();
     const f = input.file;
     fileMap.current.set(id, f);
-    setTasks((prev) => [
+    setTasksSync((prev) => [
       ...prev,
       {
         id,
@@ -589,7 +600,7 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
         error: null,
       },
     ]);
-  }, []);
+  }, [setTasksSync]);
 
   // Warn on tab close when active.
   useEffect(() => {
@@ -606,14 +617,16 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!tasks.some((t) => t.status === "done" || t.status === "cancelled")) return;
     const id = window.setTimeout(() => {
-      setTasks((prev) => prev.filter((t) => !(t.status === "done" || t.status === "cancelled")));
+      setTasksSync((prev) =>
+        prev.filter((t) => !(t.status === "done" || t.status === "cancelled")),
+      );
     }, 3000);
     return () => window.clearTimeout(id);
-  }, [tasks]);
+  }, [tasks, setTasksSync]);
 
   const pump = useCallback(async () => {
     if (running.current) return;
-    if (!tasks.some((t) => t.status === "queued")) return;
+    if (!tasksRef.current.some((t) => t.status === "queued")) return;
     running.current = true;
 
     try {
@@ -626,7 +639,7 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
 
       while (true) {
         const next = (() => {
-          const queued = tasks.filter((t) => t.status === "queued");
+          const queued = tasksRef.current.filter((t) => t.status === "queued");
           queued.sort((a, b) => a.createdAt - b.createdAt);
           return queued[0] ?? null;
         })();
@@ -635,7 +648,7 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
 
         const file = fileMap.current.get(next.id);
         if (!file) {
-          setTasks((prev) =>
+          setTasksSync((prev) =>
             prev.map((t) =>
               t.id === next.id ? { ...t, status: "error", error: "missing_file_handle" } : t,
             ),
@@ -643,7 +656,7 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
           continue;
         }
 
-        setTasks((prev) =>
+        setTasksSync((prev) =>
           prev.map((t) =>
             t.id === next.id && t.status !== "cancelled"
               ? { ...t, status: "uploading" }
@@ -969,12 +982,16 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
           } as any);
           mediaSignal(next.entryId, { kind: next.kind, variant: next.variant });
 
-          setTasks((prev) => prev.map((t) => (t.id === next.id ? { ...t, status: "done", note: "Upload complete" } : t)));
+          setTasksSync((prev) =>
+            prev.map((t) =>
+              t.id === next.id ? { ...t, status: "done", note: "Upload complete" } : t,
+            ),
+          );
           fileMap.current.delete(next.id);
         } catch (e: any) {
           const msg = String(e?.message ?? e ?? "error");
           const aborted = aborter.signal.aborted || isAbortError(e);
-          setTasks((prev) =>
+          setTasksSync((prev) =>
             prev.map((t) => {
               if (t.id !== next.id) return t;
               // If user already cancelled, don't overwrite.
@@ -990,11 +1007,12 @@ export function UploadQueueProvider({ children }: { children: React.ReactNode })
     } finally {
       running.current = false;
     }
-  }, [tasks]);
+  }, [setTasksSync]);
 
   useEffect(() => {
+    if (!tasks.some((t) => t.status === "queued")) return;
     void pump();
-  }, [pump]);
+  }, [tasks, pump]);
 
   const api = useMemo<UploadQueueApi>(
     () => ({ tasks, minimized, setMinimized, hidden, setHidden, enqueue, cancel }),
