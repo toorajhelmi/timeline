@@ -5,7 +5,8 @@ Social media built around **shared, zoomable historical timelines** (months → 
 ### Repo structure
 
 - `docs/`: product docs (vision, MVP, UX, trust/safety)
-- `supabase/`: SQL migrations (schema + RLS)
+- `infra/supabase/`: SQL migrations (schema + RLS)
+- `infra/railway/`: Railway deployment (video worker)
 - `web/`: Next.js web app (deploy to Vercel)
 
 ### Local dev (web)
@@ -27,7 +28,7 @@ npm run dev
 
 ### Database
 
-Apply migrations in `supabase/migrations/` to your Supabase project.
+Apply migrations in `infra/supabase/migrations/` to your Supabase project.
 
 ### Deployment
 

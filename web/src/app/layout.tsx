@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Header from "./_components/Header";
-import { UploadQueueProvider, UploadQueueWidget } from "./_components/UploadQueueClient";
+import Header from "@/components/layout/Header";
+import { UploadQueueProvider, UploadQueueWidget } from "@/components/upload/UploadQueueClient";
 import { getSiteUrl } from "../lib/site";
 
 const geistSans = Geist({

@@ -3,7 +3,7 @@
 ### 1) Supabase project
 
 - Create a Supabase project.
-- Apply SQL migrations from `supabase/migrations/` (in order).
+- Apply SQL migrations from `infra/supabase/migrations/` (in order).
 - In Supabase Auth settings:
   - Enable Email / OTP (magic link) sign-in.
   - Add redirect URLs:
@@ -30,15 +30,15 @@ Build settings (defaults usually work):
   - Visit `/` and confirm the page loads.
   - Create a timeline (requires login) then confirm it appears in Explore.
 - Auth:
-  - Visit `/login` and request a magic link.
+  - Visit `/auth/login` and sign in.
   - Confirm you land back on `/` logged in.
 - Writes:
   - Create timeline at `/new`.
-  - Add entry via `/t/<slug>/add`.
+  - Add entry via `/timelines/<slug>/add`.
   - Comment on an entry page.
 - Moderation:
   - Submit a report on an entry.
-  - As an admin user, verify `/admin/reports` and `/admin/timelines`.
+  - As an admin user, verify `/dashboard/reports` and `/dashboard/timelines`.
 
 ### Making an admin user
 
