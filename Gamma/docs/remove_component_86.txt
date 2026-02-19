@@ -1,1 +1,0 @@
-Let's remove user authentication from this page

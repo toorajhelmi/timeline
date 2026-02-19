@@ -1,8 +1,0 @@
-version: "3.1"
-
-
-nlu:
-
-- intent: describe_app_entertainment
-  examples: |
-    - Magic Fluids is a relaxing, colorful drawing app that will help you calm down and relieve stress, or be creative and make aesthetic digital art. It is based on algorithms of fluid flow simulation and features fluid (pun intented!), beautiful graphics. It is the best time waster! Touch the screen and enjoy hypnotizing motion of fluid swirls moving around, sometimes slow, quiet and elegant, other times dynamic, satisfying and trippy. Calm down and relax as you draw and watch peaceful flows evolve in space and

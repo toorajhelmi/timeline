@@ -1,1 +1,0 @@
-when the button is tapped go to the home page

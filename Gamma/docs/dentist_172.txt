@@ -1,1 +1,0 @@
-My Dental Clinic helps dentists manage their patients and clinic. Dentists can keep a database of their patient’s record. These include personal information, dental charts, dental notes, and appointments. They can also attach dental images and keep a record of patient payments.

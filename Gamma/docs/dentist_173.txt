@@ -1,1 +1,0 @@
-The app will help you to keep information on visit to the dentist: dentures, teeth whitening, oral hygiene, tooth decay, braces, tooth extraction, reminder of the medication.

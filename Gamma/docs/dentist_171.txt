@@ -1,2 +1,0 @@
-DentiCalc is a mobile application specifically
-for dentists. This revolutionary, easy to use app integrates our 4 best tools (Photos, Videos, Calculator, Smart) which will be essential for your daily dental work.
